@@ -1,0 +1,7 @@
+._*
+.DS*
+*parameter_files*
+*DS_Store
+.smb*
+.Rhistory
+.RData
