@@ -3,7 +3,7 @@
 library(dplyr)
 
 #Data path for proj dir
-data.path <- "../../../data/PhenoPRS"
+data.path <- "../../../../data/PhenoPRS"
 
 #Set trait variable - this can also be changed to read in from bash script
 trait <- "creatinine3"

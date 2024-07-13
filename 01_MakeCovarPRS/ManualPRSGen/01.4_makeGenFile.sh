@@ -11,7 +11,7 @@ module add apps/qctool/2.0.7
 ### Extract the snps of interest and generate gen files using QC tools
 trait="creatinine3"
 data_dir="../../../../data/PhenoPRS"
-genetic_dir="../../../data/FGFP_data/genetic_data/prsfgfp"
+genetic_dir="../../../../data/FGFP_data/genetic_data/prsfgfp"
 
 bgen_file="${genetic_dir}/qc_bgen/genotype_file.bgen"
 sample_file="${genetic_dir}/pheno/sampleids.sample" 
