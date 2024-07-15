@@ -1,0 +1,171 @@
+---
+title: "h2_mts Results"
+author: "Alec McKinlay"
+date: "2024-07-02"
+output:
+  html_document:
+---
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+
+#Set options for the fig sides
+knitr::opts_chunk$set(fig.width=14, fig.height=8, echo = F, message=F, warning=F)
+
+#Set up and read in files
+#setwd to 05_Markdowns folder
+
+#Library 
+library(tidyverse)
+library(data.table)
+library(kableExtra)
+library(ggplot2)
+library(DataExplorer)
+library(patchwork)
+library(forcats)
+library(makepipe)
+
+#Data path for proj dir
+data.path <- "../../../data/PhenoPRS"
+
+#Also load in path to scratch, proj_dir and fgfp data
+source("../../parameters/base_dir.R")
+
+#Load GWAS table in
+gwas_table <- read.csv(file = file.path(data.path, "ProcessedGWASTable_OG_GC.csv"), header = T)
+
+#Load the data in, incase we use this
+load(file.path(data.path, "data_out/fgfpdata4prs.RData"))
+
+#Load the results in
+#load(file.path(data.path, "reg_out/updated_regout.RData"))
+#load(file.path(data.path, "reg_out/multiplereg_scale.RData"))
+#load(file.path(data.path, "data4h2rmd/regout_covarprs.RData"))
+
+fallonyjpeg <- file.path(data.path, "markdowns/figs/fallonyfig.jpeg")
+methodsjpeg <- file.path(data.path, "markdowns/figs/method.jpg")
+
+
+```
+
+## Are microbial covariates driving associations between the host genome and Gut bacterial traits?
+
+Recent literature aimed at quantifying covariates of the microbiome i.e. what phenotypes drive variation?
+
+Could the hertiability observed for MTs be driven by these covairates of the microbiome?
+
+### Methods
+
+1.  Select covariates of the microbiome
+2.  Generate PRSs for these covariates
+3.  Regress PRSs onto those heritable MTs from Dave's paper, do we see signal?
+4.  For those with signal, we can then run further analyses to unpick these associations:
+    (a) Recalculation of h2 of heritable MTs before and after PRS adjustement
+    (b) Observational estimate between the MT and covariate
+    (c) Genetic correlation between the two traits
+5.  For those with consistent signal for our methodologies, we can generate a PRS of the microbial trait and run a parallel 2SMR analysis with the covariable and microbial trait
+
+##### Methodological overview
+
+![Methodological overview Figure](`r methodsjpeg`)
+
+### Decide on covariates
+
+Fallony et al studies which covariates in FGFP explained the most variation in beta diversity. We have taken the top covariates forward to generate PRSs for
+
+##### Fallony covariates
+
+![Fallony Figure](`r fallonyjpeg`)
+
+### Generate PRS for covariates
+
+The following traits have been chosen to generate PRS for in FGFP. These were selected through GWAS Catalog / OpenGWAS, filtering to EUR only with largest sample sizes and number of SNPs surpassing genome-wide sig threhsold.
+
+```{r}
+rm_traits <- c("Bristol Stool Score", "creatinine3")
+gwas_table_filt <- gwas_table[,c(1:2,5,7, 8)] %>% dplyr::filter(!Falony.trait %in% rm_traits)
+gwas_table_filt %>%
+  kbl() %>%
+  kable_styling()
+```
+
+A total of `r nrow(gwas_table_filt)` traits were chosen where PRSs were generated
+
+Now we can generate a forest plot to see if these PRSs associate to the trait, a sanity check. Many of these variables are not continuous, we have started with just those that are continuous for ease.
+
+#### Covariate Phenotype distribution and missingness in FGFP
+
+Lets look at how our phenotypes are distributed:
+
+```{r}
+
+#First we can see if our regression script needs to be rerun, this will only run if the dependencies have changed
+make_with_source(
+  source = "../03_Regressions/03.1_Reg1_CovarPRS_Covar.R", 
+  targets = file.path(data.path, "data_out/regout_covarprs.RData"), 
+  dependencies = c(file.path(data.path, "ProcessedGWASTable_OG_GC.csv"),
+                   file.path(data.path, "data_out/fgfpdata4prs.RData"))
+)
+
+#Now load the output of 03.1
+load(file.path(data.path, "data_out/regout_covarprs.RData"))
+
+#We are only interested in individuals from FGFP with pheno / geno / micro
+fgfp_data <- filter(data4prs$pheno_covariate_prs, !is.na(hemoglobin.Pt_5e.08) |
+                      micobiome_data_available == 1 | clinical_data_available == 1)
+
+fgfp_data_cc <- filter(fgfp_data, !is.na(hemoglobin.Pt_5e.08) &
+                      micobiome_data_available == 1 & clinical_data_available == 1)
+```
+
+In our FGFP dataframe we data for `r nrow(fgfp_data)` participants with genotype OR clinic OR microbiome data.
+
+There are `r nrow(fgfp_data_cc)` participants with genotype AND clinic AND microbiome data
+
+Lets look at the distribution of our phenotypes and the missingness structure so we can decide how best to model them for subsequent analyses:
+
+```{r}
+#Lets look at the distribution of our variables
+plot_histogram(fgfp_data[,regout_covarprs$data4reg$pheno])
+```
+
+#### PRS -> Covar (sanity check)
+
+Now we can see if our PRSs associate with the covariate they are trained to capture:
+
+```{r}
+#Format p values so can be plotted
+regout_covarprs$regout_covarprs_cont_scale$pvalue_label = formatC(regout_covarprs$regout_covarprs_cont_scale$p.value, format = "e", digits = 2)
+
+regout_covarprs$regout_covarprs_cont_scale %>% ggplot(aes(x = fct_rev(term), y = std_estimate, ymin = conf.low, ymax = conf.high)) +
+  geom_pointrange(color = "black", size = 0.5) +
+  geom_hline(yintercept = 0, color = "steelblue") +
+  geom_text(aes(label = pvalue_label), color = "red", hjust = -0.2, size = 3) +
+  coord_flip() +
+  xlab("Phenotype") +
+  ylab("Beta Coefficient (95% Confidence Interval)") +
+  labs(title = "Linear Regression Models Estimating the PRS of the covariate on the covariate") 
+```
+
+The plot shows beta coefficents of PRS of covariate regressed onto the phenotype value of covariate in FGFP. Red numbers indicate pvalues. CIs are extremely narrow hence looks like they have been omitted from the plot.
+
+We can see for creatinine we have a negative association. This is because our PRS is proxying kidney function e.g. estimated GFR. We also have this variable measured in FGFP however it has a high degree if missingness, hence we have used creatinine in its place
+
+This missingness of the two variables can be observed below. The table shows the % missingness of the variables.
+
+```{r}
+miss <- cbind(fgfp_data[,c("e.GFR", "Creatinine_mgdL")] %>%
+  summarise_all(~ mean(is.na(.)) * 100) %>%
+  gather(variable, missing_percent), colSums(!is.na(fgfp_data[,c("e.GFR", "Creatinine_mgdL")])))
+
+colnames(miss)[3] <- "n_obs"
+
+miss[,-1] %>%
+  kbl() %>%
+  kable_styling()
+```
+
+Due to the missingness structure, we will take forward the creatinine variable to proxy kindey function instead.
+
+### PRS -> MTs
+We can now see how these PRSs associate to the microbial phenotypes available in FGFP
+

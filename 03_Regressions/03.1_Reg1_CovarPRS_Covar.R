@@ -2,6 +2,8 @@
 #This step will regress the covariate PRS -> PRS and save lm output
 ####################################################################
 
+#Set wd to 03_Regressions !
+
 #Set up
 #Library
 library(dplyr)
@@ -14,7 +16,7 @@ data.path <- "../../../data/PhenoPRS"
 #Also load in path to scratch, proj_dir and fgfp data
 source("../../parameters/base_dir.R")
 gwas_table <- read.csv(file = file.path(data.path, "ProcessedGWASTable_OG_GC.csv"), header = T)
-load(file.path(data.path, "data4h2rmd/fgfpdata4prs.RData"))
+load(file.path(data.path, "data_out/fgfpdata4prs.RData"))
 
 #Also make a vector for our confounders of interest
 PCs <- c()
@@ -41,24 +43,53 @@ contvars <- c("Hemoglobine_gdL",
               "BMI",
               "Creatinine_mgdL",
               "Triglyceriden_mgdL",
-              "e.GFR",
-              "sleeping_hours_per_day")
+              "e.GFR")
+
+#Break the df into continous and factor label
+data4reg$pheno_vartype <- ifelse(data4reg$pheno %in% contvars, "cont", "fact")
 
 #Now lets extract our coefficents from the model
 #I have not standardised these variables and so are in the scale of the original GWAS
+
 regout_covarprs_cont <- tibble()
-for (i in 1:nrow(data4reg)){
-m <- lm(reformulate(c(confounders, data4reg$pheno[i]), response = data4reg$prs[i]), data = data4prs$pheno_covariate_prs)
-#m_scale <- lm.beta(m)
-out <- tidy(m, conf.int = TRUE) %>% dplyr::filter(term == data4reg$pheno[i]) %>% cbind(nobs(m))
+regout_covarprs_cont_scale <- tibble()
+for (i in 1:sum(data4reg$pheno_vartype == "cont")){
+
+#Extract name of pheno and prs
+pheno <- data4reg[data4reg$pheno_vartype == "cont", "pheno"][i]
+prs <- data4reg[data4reg$pheno_vartype == "cont", "prs"][i]
+
+#First run regression unscaled
+m <- lm(reformulate(c(confounders, pheno), response = prs), data = data4prs$pheno_covariate_prs)
+out <- tidy(m, conf.int = TRUE) %>% dplyr::filter(term == pheno) %>% cbind(nobs(m))
 regout_covarprs_cont <- rbind(regout_covarprs_cont, out) 
+
+#Then scale
+m_scale <- lm.beta(m)
+out2 <- tidy(m_scale) %>% dplyr::filter(term == pheno) %>% cbind(nobs(m))
+regout_covarprs_cont_scale <- rbind(regout_covarprs_cont_scale, out2) 
 }
 
+#Fix the CIs on the scaled
+regout_covarprs_cont_scale <- regout_covarprs_cont_scale %>%
+  mutate(conf.low = std_estimate - 1.96 * std.error,
+         conf.high = std_estimate + 1.96 * std.error)
+
 #Combine the PRS name with output
-regout_covarprs <- cbind(regout_covarprs, data4reg$prs)
+regout_covarprs_cont <- cbind(regout_covarprs_cont, data4reg[data4reg$pheno_vartype == "cont", "prs"])
+regout_covarprs_cont_scale <- cbind(regout_covarprs_cont_scale, data4reg[data4reg$pheno_vartype == "cont", "prs"])
+
+
 
 #Save the output
-save(regout_covarprs, file = file.path(data.path, "data4h2rmd/regout_covarprs.RData"))
+#This will be a list with the data4reg file and regression coefficents
+#Still need to add the factor vars and the standardised regressions if going forward with these analyses
+regout_covarprs <- list(data4reg = data4reg, 
+     regout_covarprs_cont = regout_covarprs_cont,
+     regout_covarprs_cont_scale = regout_covarprs_cont_scale)
+
+save(regout_covarprs, 
+     file = file.path(data.path, "data_out/regout_covarprs.RData"))
 
 
 

@@ -138,4 +138,4 @@ data4prs[["matchedvars"]] <- data.frame(prs = c(paste0(gwas_table$file_name, ".P
                                             "Creatinine_mgdL",
                                             "e.GFR"))
 
-save(data4prs, file = file.path(data.path, "data4h2rmd/fgfpdata4prs.RData"))
+save(data4prs, file = file.path(data.path, "data_out/fgfpdata4prs.RData"))
