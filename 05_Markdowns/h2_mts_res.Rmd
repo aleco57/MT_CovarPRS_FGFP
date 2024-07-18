@@ -17,8 +17,10 @@ knitr::opts_chunk$set(fig.width=14, fig.height=8, echo = F, message=F, warning=F
 #Library 
 library(tidyverse)
 library(data.table)
+library(readxl)
 library(kableExtra)
 library(ggplot2)
+library(ggforestplot)
 library(DataExplorer)
 library(patchwork)
 library(forcats)
@@ -36,11 +38,26 @@ gwas_table <- read.csv(file = file.path(data.path, "ProcessedGWASTable_OG_GC.csv
 #Load the data in, incase we use this
 load(file.path(data.path, "data_out/fgfpdata4prs.RData"))
 
-#Load the results in
-#load(file.path(data.path, "reg_out/updated_regout.RData"))
-#load(file.path(data.path, "reg_out/multiplereg_scale.RData"))
-#load(file.path(data.path, "data4h2rmd/regout_covarprs.RData"))
+#Load in the data from RNT regression script (03.1), first we can check if needs to be updated before loading
+#make_with_source(
+#  source = "../03_Regressions/03.1_RegRNTs.R", 
+#  targets = file.path(data.path, "data_out/regout_covarprs.RData"), 
+#  dependencies = c(file.path(data.path, "ProcessedGWASTable_OG_GC.csv"),
+#                   file.path(data.path, "data_out/fgfpdata4prs.RData"))
+#)
 
+#Update so that they load as one object rather than individual ones
+
+#Now load the output of reg1
+load(file.path(data.path, "data_out/regout_covarprs.RData"))
+
+#Out output of reg2
+load(file.path(data.path, "data_out/regout_prsRNTs.RData"))
+
+#And the observational estimates
+load(file.path(data.path, "data_out/regout_observational.RData"))
+
+#State filepath to our figures in the markdown
 fallonyjpeg <- file.path(data.path, "markdowns/figs/fallonyfig.jpeg")
 methodsjpeg <- file.path(data.path, "markdowns/figs/method.jpg")
 
@@ -49,9 +66,8 @@ methodsjpeg <- file.path(data.path, "markdowns/figs/method.jpg")
 
 ## Are microbial covariates driving associations between the host genome and Gut bacterial traits?
 
-Recent literature aimed at quantifying covariates of the microbiome i.e. what phenotypes drive variation?
-
-Could the hertiability observed for MTs be driven by these covairates of the microbiome?
+* Recent literature aimed at quantifying covariates of the microbiome i.e. what phenotypes drive variation?
+* Could the hertiability observed for MTs be driven by these covairates of the microbiome?
 
 ### Methods
 
@@ -66,7 +82,7 @@ Could the hertiability observed for MTs be driven by these covairates of the mic
 
 ##### Methodological overview
 
-![Methodological overview Figure](%60r%20methodsjpeg%60)
+![Methodological overview Figure](`r methodsjpeg`)
 
 ### Decide on covariates
 
@@ -74,7 +90,7 @@ Fallony et al studies which covariates in FGFP explained the most variation in b
 
 ##### Fallony covariates
 
-![Fallony Figure](%60r%20fallonyjpeg%60)
+![Fallony Figure](`r fallonyjpeg`)
 
 ### Generate PRS for covariates
 
@@ -88,26 +104,14 @@ gwas_table_filt %>%
   kable_styling()
 ```
 
-A total of `r nrow(gwas_table_filt)` traits were chosen where PRSs were generated
-
-Now we can generate a forest plot to see if these PRSs associate to the trait, a sanity check. Many of these variables are not continuous, we have started with just those that are continuous for ease.
+* A total of `r nrow(gwas_table_filt)` traits were chosen where PRSs were generated
+* Now we can generate a forest plot to see if these PRSs associate to the trait, a sanity check. Many of these variables are not continuous, we have started with just those that are continuous for ease.
 
 #### Covariate Phenotype distribution and missingness in FGFP
 
 Lets look at how our phenotypes are distributed:
 
 ```{r}
-
-#First we can see if our regression script needs to be rerun, this will only run if the dependencies have changed
-make_with_source(
-  source = "../03_Regressions/03.1_Reg1_CovarPRS_Covar.R", 
-  targets = file.path(data.path, "data_out/regout_covarprs.RData"), 
-  dependencies = c(file.path(data.path, "ProcessedGWASTable_OG_GC.csv"),
-                   file.path(data.path, "data_out/fgfpdata4prs.RData"))
-)
-
-#Now load the output of 03.1
-load(file.path(data.path, "data_out/regout_covarprs.RData"))
 
 #We are only interested in individuals from FGFP with pheno / geno / micro
 fgfp_data <- filter(data4prs$pheno_covariate_prs, !is.na(hemoglobin.Pt_5e.08) |
@@ -117,9 +121,8 @@ fgfp_data_cc <- filter(fgfp_data, !is.na(hemoglobin.Pt_5e.08) &
                       micobiome_data_available == 1 & clinical_data_available == 1)
 ```
 
-In our FGFP dataframe we data for `r nrow(fgfp_data)` participants with genotype OR clinic OR microbiome data.
-
-There are `r nrow(fgfp_data_cc)` participants with genotype AND clinic AND microbiome data
+* In our FGFP dataframe we data for `r nrow(fgfp_data)` participants with genotype OR clinic OR microbiome data.
+* There are `r nrow(fgfp_data_cc)` participants with genotype AND clinic AND microbiome data
 
 Lets look at the distribution of our phenotypes and the missingness structure so we can decide how best to model them for subsequent analyses:
 
@@ -166,6 +169,103 @@ miss[,-1] %>%
 
 Due to the missingness structure, we will take forward the creatinine variable to proxy kindey function instead.
 
-### PRS -\> MTs
+### PRS -> MTs
+* First we can focus our analyses on Dave's RNT Microbial traits which were generated for the FGFP GWAS
 
-We can now see how these PRSs associate to the microbial phenotypes available in FGFP
+Below highlight the MT traits which showed evidence of h2 as estimated by GREML:
+
+```{r}
+#Read in hughes supp file with h2 results
+hughes_h2 <- read_xlsx(path = file.path(data.path, "Hughes_mtGWAS.xlsx"),
+                       sheet = "Table S3",
+                       skip = 4)
+
+#Change pval cols to numeric so we can filter on these values
+pvalcols <- colnames(hughes_h2)[colnames(hughes_h2) %>% endsWith("_pval")]
+hughes_h2[,pvalcols] <- sapply(hughes_h2[,pvalcols], as.numeric)
+
+#Now find out which RNT traits showed evidence for heritability
+RNT_h2_traits <- filter(hughes_h2, RNT_pval < 0.05) %>% dplyr::select(TaxaName, RNT_h2, RNT_se, RNT_pval, RNT_n)
+RNT_h2_traits %>%
+  kbl(digits = 2) %>%
+  kable_styling()
+
+```
+
+* Now we regress our PRSs onto these heritable microbial traits to see where there is evidence of signal
+
+```{r}
+#Lets filter our scaled lm output into only those heritable bugs
+filterandnamechange <- function(x){
+df <- filter(x, mt %in% paste0(RNT_h2_traits$TaxaName, "_RNTRes"))
+df$PRS <- gsub(".Pt_5e.08", "_PRS", df$term) 
+return(df)
+}
+
+h2mtsres <- lapply(regout_prsRNTs, 
+                 FUN = filterandnamechange)
+
+signal <- lapply(h2mtsres, 
+                 function(x) filter(x, p.value < 0.05))
+
+#What prs' are we looking at?
+prs2use <- regout_covarprs$regout_covarprs_cont_scale$`data4reg[data4reg$pheno_vartype == "cont", "prs"]` %>% unique()
+```
+
+* `r nrow(RNT_h2_traits)` Microbial traits and `r length(prs2use)` covariate PRSs have been used for the regressions
+* All of the regressions run can be visualised below:
+
+```{r}
+ggforestplot::forestplot(
+  df = h2mtsres$regout_RNTs_univar,
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  psignif = 0.05,
+  colour = PRS,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading to the covariates of interest",
+  title = "Regression coefficents from PRS covariate on Microbial trait")
+```
+
+* Lets filter to those beta coefficents with evidence of signal
+* And also present those with bonferonni corrected signal, those points which are filled in show evidence of bonferroni correct association
+
+```{r}
+ggforestplot::forestplot(
+  df = signal$regout_RNTs_univar,
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  psignif = 0.05/length(prs2use),
+  colour = PRS,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading to the covariates of interest",
+  title = "Regression coefficents from PRS covariate on Microbial trait")
+```
+
+### Observational Esimate: Covariate -> RNT MT
+
+* Do our observational estimates agree with the traits showing evidence for an association with the PRS?
+
+```{r}
+obs_est$PRS <- rep("Observational", nrow(obs_est))
+colnames(obs_est)[6] <- "nobs(lm2)"
+obs_sigprs <- rbind(signal$regout_RNTs_univar, obs_est)
+
+ggforestplot::forestplot(
+  df = obs_sigprs,
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  psignif = 0.05/length(prs2use),
+  colour = PRS,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading of the covariate / the measure covariate",
+  title = "Regression coefficents from PRS covariate on Microbial trait")
+```
+
+* We see consistency in for the latter trait
+* Do we also see this consistency in Genetic correlation between the two observational triats?
+
+## Genetic Correlation
