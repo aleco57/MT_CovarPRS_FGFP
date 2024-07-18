@@ -3,7 +3,7 @@
 #Set wd to /scripts/MT_CovarPRS_FGFP/01_MakeCovarPRS
 wd=$(pwd)
 
-#Extract our basedir for bc
+#Extract our basedir for bp
 source ../../parameters/scratch_path.txt
 
 #Extract the phenos for us to loop round

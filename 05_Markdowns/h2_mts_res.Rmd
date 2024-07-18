@@ -66,7 +66,7 @@ Could the hertiability observed for MTs be driven by these covairates of the mic
 
 ##### Methodological overview
 
-![Methodological overview Figure](`r methodsjpeg`)
+![Methodological overview Figure](%60r%20methodsjpeg%60)
 
 ### Decide on covariates
 
@@ -74,7 +74,7 @@ Fallony et al studies which covariates in FGFP explained the most variation in b
 
 ##### Fallony covariates
 
-![Fallony Figure](`r fallonyjpeg`)
+![Fallony Figure](%60r%20fallonyjpeg%60)
 
 ### Generate PRS for covariates
 
@@ -128,7 +128,7 @@ Lets look at the distribution of our phenotypes and the missingness structure so
 plot_histogram(fgfp_data[,regout_covarprs$data4reg$pheno])
 ```
 
-#### PRS -> Covar (sanity check)
+#### PRS -\> Covar (sanity check)
 
 Now we can see if our PRSs associate with the covariate they are trained to capture:
 
@@ -166,6 +166,6 @@ miss[,-1] %>%
 
 Due to the missingness structure, we will take forward the creatinine variable to proxy kindey function instead.
 
-### PRS -> MTs
-We can now see how these PRSs associate to the microbial phenotypes available in FGFP
+### PRS -\> MTs
 
+We can now see how these PRSs associate to the microbial phenotypes available in FGFP
