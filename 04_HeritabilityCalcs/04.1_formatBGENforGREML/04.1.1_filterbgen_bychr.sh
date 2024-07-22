@@ -4,7 +4,7 @@
 #SBATCH --cpus-per-task=1 
 #SBATCH --time=01:00:00
 #SBATCH --mem=20G
-#SBATCH --account=sscm009461
+#SBATCH --account=
 #SBATCH --array=1-22
 
 ################################################

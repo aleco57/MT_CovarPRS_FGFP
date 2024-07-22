@@ -1,44 +1,36 @@
+#### Now we can estimate h2 with our .phen file and GRM
 
-cd /user/work/am17168/greml_calc
+#Set working directory to where the script is located
+#Set a base_dir
+geno_prefix="../../../../data/PhenoPRS/greml"
 
+#Add greml
 module add apps/gcta/1.93.2-beta
 
-base_dir="/user/work/am17168/greml_calc"
+#First extract the pheno file to extract phenotypes and number of loops need to run
+pheno_file="${geno_prefix}/phenos4greml/h2mts.phen"
 
-#Make the GRM with no removal of people
-gcta64 --bfile ${base_dir}/data/plink/pruned/pruned_data --make-grm --out ${base_dir}/data/greml_out/grm/grm --thread-num 10
+# Get the headers of the columns in the phenotypes file
+pheno_names=${geno_prefix}/phenos4greml/phennames.txt
 
-#This code removes cryptic relatedness if needs:
-gcta64 --grm ${base_dir}/data/greml_out/grm/grm --grm-cutoff 0.025 --make-grm --out ${base_dir}/data/greml_out/grm_rm025/grm_rm025
+# Determine the number of columns
+num_cols=$(awk -F'\t' '{print NF}' $pheno_file | head -n 1)
+
 
 #Lets try to compute h2 with our rm_025 and grm file
 # Loop through values 1 to 7 as this is the number of phenotypes in the file
-for num in {1..7}; do
+for num in $(seq 3 $num_cols); do
   echo "Running GCTA for mpheno = $num"
+
+  index=$((num - 2))
+  pheno=$(sed -n "${index}p" "$pheno_names")
   
-  gcta64 --grm ${base_dir}/data/greml_out/grm_rm025/grm_rm025 \
-         --pheno ${base_dir}/data/mapping_files/phenos4greml/sigRNT_plinkids.phen \
-         --mpheno $num \
+  
+  gcta64 --grm ${geno_prefix}/greml_out/grm_rm025/grm_rm025 \
+         --pheno ${geno_prefix}/phenos4greml/h2mts.phen \
+         --mpheno $index \
          --reml \
-         --out ${base_dir}/data/greml_out/h2out/h2out_pheno$num \
+         --out ${geno_prefix}/greml_out/h2out/h2out_$pheno \
          --thread-num 10
 done
-
-
-#Now we can do the same for our PRS adjusted phenotypes
-# Loop through values 1 to 13
-for num in {1..13}; do
-  echo "Running GCTA for mpheno = $num"
-  
-  gcta64 --grm ${base_dir}/data/greml_out/grm_rm025/grm_rm025 \
-         --pheno ${base_dir}/data/mapping_files/phenos4greml/sigRNT_PRSRes_plinkids.phen \
-         --mpheno $num \
-         --reml \
-         --out ${base_dir}/data/greml_out/h2out/prsadj/h2outadj_pheno$num \
-         --thread-num 10
-done
-
-
-#Now copy these heritability files over to proj 007 for processing there
-
 
