@@ -12,8 +12,7 @@
 #Library
 library(dplyr)
 library(data.table)
-library(lm.beta)
-library(lmtest)
+library(broom)
 
 #Data path for proj dir
 data.path <- "../../../data/PhenoPRS"
@@ -53,8 +52,14 @@ contvars <- c("Hemoglobine_gdL",
 #Break the df into continous and factor label
 data4reg$pheno_vartype <- ifelse(data4reg$pheno %in% contvars, "cont", "fact")
 
+#Extract the PRSs we want to use, removed duplicates and any factor variables at the moment
+prs2use <- data4reg[data4reg$pheno_vartype == "cont", "prs"] %>% unique()
+
+#Lets make df for the scaled data so can also have these coefs if needed
+prspheno_df_scale <- scale(data4prs$pheno_covariate_prs[,c(prs2use, contvars, confounders)]) %>% as.data.frame()
+
 #Now lets extract our coefficents from the model
-#I have not standardised these variables and so are in the scale of the original GWAS
+###
 
 regout_covarprs_cont <- tibble()
 regout_covarprs_cont_scale <- tibble()
@@ -70,8 +75,8 @@ out <- tidy(m, conf.int = TRUE) %>% dplyr::filter(term == pheno) %>% cbind(nobs(
 regout_covarprs_cont <- rbind(regout_covarprs_cont, out) 
 
 #Then scale
-m_scale <- lm.beta(m)
-out2 <- tidy(m_scale) %>% dplyr::filter(term == pheno) %>% cbind(nobs(m))
+m_scale <- lm(reformulate(c(confounders, pheno), response = prs), data = prspheno_df_scale)
+out2 <- tidy(m_scale, conf.int = T) %>% dplyr::filter(term == pheno) %>% cbind(nobs(m_scale))
 regout_covarprs_cont_scale <- rbind(regout_covarprs_cont_scale, out2) 
 }
 
@@ -82,22 +87,16 @@ regout_covarprs_cont_scale <- cbind(regout_covarprs_cont_scale, data4reg[data4re
 
 
 
-#Save the output
-#This will be a list with the data4reg file and regression coefficents
-#Still need to add the factor vars and the standardised regressions if going forward with these analyses
+#Save the output to object
 regout_covarprs <- list(data4reg = data4reg, 
      regout_covarprs_cont = regout_covarprs_cont,
      regout_covarprs_cont_scale = regout_covarprs_cont_scale)
 
-save(regout_covarprs, 
-     file = file.path(data.path, "data_out/regout_covarprs.RData"))
 
 
 ####################################################################
 #Next we can run the linear regression of PRS -> RNT MT
 ####################################################################
-#Extract the PRSs to use. Removed duplicates and any factor variables at the moment
-prs2use <- data4reg[data4reg$pheno_vartype == "cont", "prs"] %>% unique()
 
 #First lets make a df with all our variables of interest, this will be our confounders, cont PRSs and MTs
 prsmicropheno_df <- merge(data4prs$pheno_covariate_prs[,c(prs2use, contvars, "fgfp_id")],
@@ -141,14 +140,13 @@ for(mt in RNTs){
 regout_prsRNTs <- list(regout_RNTs_univar = regout_RNTs_univar,
                        regout_RNTs_multivar = regout_RNTs_multivar)
 
-save(regout_prsRNTs, 
-     file = file.path(data.path, "data_out/regout_prsRNTs.RData"))
-
 
 
 ####################################################################
 #Next we can run the observational regression of covar -> RNT MT
 ####################################################################
+#Load in h2 bugs object
+load(file = file.path(data.path, "data_out/h2bugs_02.2.RData"))
 
 #For these traits with PRS signal do we also see an observational signal?
 signal <- lapply(regout_prsRNTs, 
@@ -172,6 +170,9 @@ for (i in 1:nrow(signal$regout_RNTs_univar)){
 }
 
 
-save(obs_est, 
-     file = file.path(data.path, "data_out/regout_observational.RData"))
+##########################################################################################
+#Now we can save all objects to one .RData object so easier to load into the Markdown
+##########################################################################################
+save(regout_covarprs, regout_prsRNTs, obs_est,
+     file = file.path(data.path, "data_out/data_Reg03.1.RData"))
 
