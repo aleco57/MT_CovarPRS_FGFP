@@ -2,7 +2,7 @@
 
 This folder contains scripts for analyses involving heritability estimation
 
-* 04.1 Contains scripts to edit the bgen genetic files to filter on only those SNPs we are interested in for the analyses and convert the file format so can be analysed by GREML
+* 04.1 Contains scripts to edit the bgen genetic files to filter on only those SNPs we are interested in for the analyses and convert the file format so can be analysed by GREML. The GRM is also created here
 
 * 04.2 This folder contains scripts to extract our heritable MTs, residualise them against covariate PRSs and calculate heritability estimates for the residualised traits
 
