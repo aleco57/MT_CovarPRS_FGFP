@@ -13,7 +13,6 @@ data.path <- "../../../../data/PhenoPRS"
 load(file.path(data.path, "greml/phenos4greml/data_phenos04.2.1.RData"))
 
 #Read in the h2 estimates from GREML
-#First read in the unadjusted h2
 h2files <- list.files(file.path(data.path, "greml/greml_out/h2out")) %>% str_subset(".hsq")
 
 h2_estimates <- c()

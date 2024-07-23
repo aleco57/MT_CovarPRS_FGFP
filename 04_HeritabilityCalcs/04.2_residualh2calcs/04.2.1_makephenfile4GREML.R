@@ -29,19 +29,6 @@ load(file.path(data.path, "data_out/data_Reg03.1.RData"))
 plinkbgen_linker <- read.table(file = file.path(data.path, "greml/mapping_files/bgenplinkidlink.txt"),
                                header = T)
 
-
-#Read in linker data
-linker_data <- read.table(file.path(data.path, "../FGFP_data/linker/fgfp_sampleid_linker_20200211.txt"), 
-                          header = TRUE, as.is = TRUE, sep = "\t")
-
-
-#Add the fgf linker to the plinkbgenlinker
-plinkbgen_linker <- merge(plinkbgen_linker,
-                          linker_data[,c("fgfp_id", "genetic_id")],
-                          by.x = "bgenid1",
-                          by.y = "genetic_id") %>% distinct()
-
-
 ############################################################
 # Now we can extract the phenotypes we want to run in GREML
 ############################################################
