@@ -23,38 +23,50 @@ load(file.path(data.path, "data_out/data_Reg03.1.RData"))
 plinkbgen_linker <- read.table(file = file.path(data.path, "greml/mapping_files/bgenplinkidlink.txt"),
                                header = T)
 
-#Read in hughes supp file with h2 results
-load(file = file.path(data.path, "data_out/h2bugs_02.2.RData"))
-RNTh2_names <- paste0(RNT_h2_traits$TaxaName, "_RNTRes")
+#Read in our dir_cons associations
+load(file = file.path(data.path, "data_out/data_ConsistentAssoc03.2.RData"))
+
+#############################################################################
+# We want to generate .phen file dir cons analysis
+# Have now removed code which focused on h2 phenotypes from FGFP GWAS results
+############################################################################
 
 #Extract vector of the traits so that phenotypes are in the correct order for .phen GREML file
-phenovector <- lapply(1:nrow(obs_est), function(i) obs_est[i, c("term", "mt")]) %>% unlist() %>% unname()
+phenovector <- lapply(1:nrow(obsest_prsest), function(i) obsest_prsest[i, c("term", "mt")]) %>% unlist() %>% unname()
 
-#First lets make a df with all our variables of interest, this will be our confounders, cont PRSs and MTs
-phenos4cor <- merge(data4prs$pheno_covariate_prs[,c(obs_est$term, "fgfp_id", "IID")],
-                          dplyr::select(data4prs$gwasedmts, linker, obs_est$mt),
-                          by.x = "fgfp_id",
-                          by.y = "linker",
-                          all = T) %>% 
+#First lets make a df with all our variables of interest, this will be our cont PRSs and MTs
+phenos4cor <- merge(data4prs$pheno_covariate_prs[,c(unique(obsest_prsest$term), "fgfp_id", "IID")],
+                    dplyr::select(data4prs$gwasedmts, linker, unique(obsest_prsest$mt)),
+                    by.x = "fgfp_id",
+                    by.y = "linker",
+                    all = T) %>% 
   #Then filter to the only individuals in the bgen file
   dplyr::filter(IID %in% plinkbgen_linker$bgenid1,
                 fgfp_id %in% plinkbgen_linker$fgfp_id) %>% 
   distinct()
 
+#Lets scale our pheno variables to see if aids for convergence of GREML
+ncols <- length(unique(obsest_prsest$term))+1
+phenos4cor[,2:ncols] <- scale(phenos4cor[,2:ncols])
+
 #Now merge to make our file, must merge on both ids as some repeated measures in genetic data
 phenfile <- merge(plinkbgen_linker, phenos4cor, , by.x = c("fgfp_id", "bgenid1"), by.y = c("fgfp_id", "IID")) %>%
-#Sort on plinkid
-  arrange(plinkid1) %>%
+  #Sort on plinkid
+  arrange(plinkid1)
+  
 #Then extract columns of interest
-  select(plinkid1, plinkid2, phenovector)
+phenfile <- phenfile[,c("plinkid1","plinkid2",phenovector)]
 
 #Save as .phen file for GREML
 write.table(phenfile,
-            file.path(data.path, "greml/phenos4greml/bivariateGREML/phen4cor.phen"),
+            file.path(data.path, "greml/phenos4greml/bivariateGREML/phen4cor_dircons.phen"),
             col.names = F, 
             sep = "\t",
             row.names = F,
             quote = F)
 
 #Also make a note of the headers for GREML
-writeLines(colnames(phenfile)[-c(1:2)], file.path(data.path, "greml/phenos4greml/bivariateGREML/phennames.txt"))
+writeLines(phenovector, file.path(data.path, "greml/phenos4greml/bivariateGREML/phennames_dircons.txt"))
+
+
+

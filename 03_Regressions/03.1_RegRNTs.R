@@ -153,13 +153,12 @@ signal <- lapply(regout_prsRNTs,
                  function(x) filter(x, mt %in% paste0(RNT_h2_traits$TaxaName, "_RNTRes") &
                                       p.value < 0.05))
 
+#Can just look at those with signal as highlighted above, however I think best to run for all then filter on the ones we are interested in after
+
 obs_est <- tibble()
-for (i in 1:nrow(signal$regout_RNTs_univar)){
-  #Extract the necessary variables
-  prs <- signal$regout_RNTs_univar$term[i]
-  pheno <- data4reg[data4reg$prs == prs, "pheno"]
-  mt <- signal$regout_RNTs_univar$mt[i]  
-  
+for(mt in RNTs){
+
+for(pheno in contvars)  {
     lm <- lm(reformulate(pheno, response = mt), data = prsmicropheno_df_scale)
     out <- lm %>% 
       tidy() %>% 
@@ -167,6 +166,7 @@ for (i in 1:nrow(signal$regout_RNTs_univar)){
       cbind(nobs(lm), mt)
     
     obs_est <- rbind(obs_est, out) 
+}
 }
 
 

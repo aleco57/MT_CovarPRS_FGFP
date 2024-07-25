@@ -8,10 +8,10 @@ geno_prefix="../../../../data/PhenoPRS/greml"
 module add apps/gcta/1.93.2-beta
 
 #First extract the pheno file to extract phenotypes and number of loops need to run
-pheno_file="${geno_prefix}/phenos4greml/bivariateGREML/phen4cor.phen"
+pheno_file="${geno_prefix}/phenos4greml/bivariateGREML/phen4cor_dircons.phen"
 
 # Get the headers of the columns in the phenotypes file
-pheno_names=${geno_prefix}/phenos4greml/bivariateGREML/phennames.txt
+pheno_names=${geno_prefix}/phenos4greml/bivariateGREML/phennames_dircons.txt
 
 # Determine the number of columns
 num_cols=$(awk -F'\t' '{print NF}' $pheno_file | head -n 1)
@@ -32,7 +32,7 @@ for num in $(seq 3 2 $num_cols); do
   gcta64 --grm ${geno_prefix}/greml_out/grm_rm025/grm_rm025 \
          --pheno $pheno_file \
          --reml-bivar $index $index2 \
-         --out ${geno_prefix}/greml_out/h2out_cor/h2out_$pheno1__pheno2 \
-         --thread-num 10
+         --out ${geno_prefix}/greml_out/h2out_cor_dircons/h2out_$pheno1__pheno2 \
+         --thread-num 10 
 done
 
