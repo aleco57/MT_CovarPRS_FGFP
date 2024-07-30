@@ -18,12 +18,9 @@ source("../../../parameters/base_dir.R")
 #Load in our data
 load(file.path(data.path, "data_out/fgfpdata4prs.RData"))
 
-#Read in hughes supp file with h2 results
-load(file = file.path(data.path, "data_out/h2bugs_02.2.RData"))
-RNTh2_names <- paste0(RNT_h2_traits$TaxaName, "_RNTRes")
-
-#Read in the regressions output so we can see which bug is associated with which PRS
-load(file.path(data.path, "data_out/data_Reg03.1.RData"))
+#Read in the correlation output so we can see where we have consistent estimates
+obs_prs_cor_filt <- read.table(file = file.path(data.path, "greml/greml_out/h2out_cor_dircons/clean_out_withobsprs.txt"), 
+                               header = T, sep = "\t")
 
 #Read in plinkbgen name linker file
 plinkbgen_linker <- read.table(file = file.path(data.path, "greml/mapping_files/bgenplinkidlink.txt"),
@@ -33,77 +30,85 @@ plinkbgen_linker <- read.table(file = file.path(data.path, "greml/mapping_files/
 # Now we can extract the phenotypes we want to run in GREML
 ############################################################
 
-#Now we can extract the phenotypes of interest i.e. we are focusing on those which are heritable
-#First change to df so can extract columns of interest
+# Edit our "data4prs[["matchedvars"]]" slightly to remove PRSs we are no longer interested in
+data4reg <- data4prs[["matchedvars"]] %>% 
+  dplyr::filter(!prs %in% c("stool_freq.Pt_5e.08", "creatinine3.Pt_5e.08"))
+
 data4prs$gwasedmts <- as.data.frame(data4prs$gwasedmts)
-phenos4greml <- data4prs$gwasedmts[,c("linker",paste0(RNT_h2_traits$TaxaName, "_RNTRes"))]
+phenos4greml_dircons <- data4prs$gwasedmts[,c("linker", unique(obs_prs_cor_filt$mt))]
 
 #Now merge with bgen linker so can format a phenotype file for GREML
-phenos4greml <- merge(plinkbgen_linker, phenos4greml, , by.x = "fgfp_id", by.y = "linker", all.x = T)
-
-########################
-# PRS adjust phenotypes
-########################
-#Now we want to add on our adjusted MTs for the PRS covariate so we can calculate the heritability for these phenotypes
-
-#First lets residualise the phenotypes we are interested in
-traits2residualise <- filter(regout_prsRNTs$regout_RNTs_univar,
-                             mt %in% RNTh2_names &
-                               p.value < 0.05)
+phenos4greml_dircons <- merge(plinkbgen_linker, phenos4greml_dircons, , by.x = "fgfp_id", by.y = "linker", all.x = T)
 
 
 #Now residualise the traits
 #Create a df for this regression
-residual_df <- merge(data4prs$gwasedmts %>% dplyr::select(linker, all_of(traits2residualise$mt)), 
-                     data4prs$pheno_covariate_prs %>% dplyr::select(fgfp_id, IID, all_of(traits2residualise$term)),
+residual_df_dircons <- merge(data4prs$gwasedmts %>% dplyr::select(linker, all_of(obs_prs_cor_filt$mt)), 
+                     data4prs$pheno_covariate_prs %>% dplyr::select(fgfp_id, IID, all_of(obs_prs_cor_filt$term_prs)),
                      by.x = "linker",
                      by.y = "fgfp_id",
                      all.y = T) 
 
 #We are only interested in those genetic_ids which are in our bgen file as have passed genetic QC
-residual_df <- dplyr::filter(residual_df, 
-                             IID %in% phenos4greml$bgenid1,
-                             linker %in% phenos4greml$fgfp_id) %>% distinct()
+residual_df_dircons <- dplyr::filter(residual_df_dircons, 
+                             IID %in% phenos4greml_dircons$bgenid1,
+                             linker %in% phenos4greml_dircons$fgfp_id) %>% distinct()
+
+################## 
+# Residualisation
+##################
+
 
 #Now extract the residuals from the regression model
-#Note for this we have only residualised for one PRS against one MT. 
-#If multiple PRSs associated then could start looking at multiple PRSs regressed against trait
+#First we can do this for 1:1
 
-for (i in 1:nrow(traits2residualise)){
+for (i in 1:nrow(obs_prs_cor_filt)){
   
-  bug <- traits2residualise$mt[i]
-  prs <- traits2residualise$term[i]
+  bug <- obs_prs_cor_filt$mt[i]
+  prs <- obs_prs_cor_filt$term_prs[i]
   
-  residual_df[, paste0(bug,"_", prs ,"_res")] <- lm(reformulate(prs, response = bug),
-                                                   data = residual_df, na.action = na.exclude) %>% residuals()
+  residual_df_dircons[, paste0(bug, "_res_", prs)] <- lm(reformulate(prs, response = bug),
+                                                    data = residual_df_dircons, na.action = na.exclude) %>% residuals()
+  
+}
+
+#Then we can also extract the residuals for the multiple pheno residualisation of the microbial trait
+
+multiplesignal_mt <- obs_prs_cor_filt$mt[duplicated(obs_prs_cor_filt$mt)]
+
+for (i in 1:length(multiplesignal_mt)){
+  
+  bug <- multiplesignal_mt[i]
+  prs <- obs_prs_cor_filt[obs_prs_cor_filt$mt == bug, "term_prs"] 
+  prs_name <- paste(prs, collapse = "__")
+  
+  residual_df_dircons[, paste0(bug, "_res_", prs_name)] <- lm(reformulate(prs, response = bug),
+                                                         data = residual_df_dircons, na.action = na.exclude) %>% residuals()
   
 }
 
 
-
-
-phenos4greml <- merge(phenos4greml, 
-                      residual_df %>% dplyr::select(linker, IID, ends_with(".Pt_5e.08_res")),
-                      by.x = c("fgfp_id", "bgenid1"),
-                      by.y = c("linker", "IID"),
-                      all = T)
-
-phenfile <- phenos4greml[,-c(1:3)]
+phenos4greml_dircons <- merge(phenos4greml_dircons[,1:5], 
+                              residual_df_dircons[,!colnames(residual_df_dircons) %in% unique(obs_prs_cor_filt$term_prs)],
+                              by.x = c("fgfp_id", "bgenid1"),
+                              by.y = c("linker", "IID"),
+                              all = T)
+                              
+phenfile2 <- phenos4greml_dircons[,-c(1:3)]
 
 #Finally order the ids so in the same order as plink id file
-phenfile <- phenfile[order(phenfile$plinkid1),]
+phenfile2 <- phenfile2[order(phenfile2$plinkid1),]
 
 #Save as .phen file for GREML
-write.table(phenfile,
-            file.path(data.path, "greml/phenos4greml/h2mts.phen"),
+write.table(phenfile2,
+            file.path(data.path, "greml/phenos4greml/dircons/dircons.phen"),
             col.names = F, 
             sep = "\t",
             row.names = F,
             quote = F)
 
-writeLines(colnames(phenfile)[-c(1:2)], file.path(data.path, "greml/phenos4greml/phennames.txt"))
+writeLines(colnames(phenfile2)[-c(1:2)], file.path(data.path, "greml/phenos4greml/dircons/dircons_phenos.txt"))
 
 #Also save as an R object as may be useful later
-save(phenos4greml, file = file.path(data.path, "greml/phenos4greml/data_phenos04.2.1.RData"))
-
+save(phenos4greml_dircons, file = file.path(data.path, "greml/phenos4greml/dircons/data_phenosdircons_04.2.1.RData"))
 
