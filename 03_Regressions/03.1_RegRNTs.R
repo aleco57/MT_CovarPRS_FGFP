@@ -169,6 +169,33 @@ for(pheno in contvars)  {
 }
 }
 
+#Edit this slightly so better display in plots
+#Make another column so we can group the bug
+obs_est <- obs_est %>%
+  mutate(group = str_extract(mt, "^[^_]+"))
+
+obs_est <- obs_est %>% 
+  mutate(group = case_when(
+    group == "P" ~ "Phyla",
+    group == "C" ~ "Class",
+    group == "O" ~ "Order",
+    group == "F" ~ "Family",
+    group == "G" ~ "Genus",
+    group == "Div" ~ "Diversity", 
+    TRUE ~ group  # Keep all other values unchanged
+  ))
+
+obs_est <- obs_est %>% 
+  mutate(covar_name = case_when(
+    term == "Hemoglobine_gdL" ~ "Hemoglobine",
+    term == "RBC_milj_mm3" ~ "RBC",
+    term == "Urinezuur_mgdL" ~ "Urinezuur",
+    term == "HDL.chol_mgdL" ~ "HDL",
+    term == "Triglyceriden_mgdL" ~ "Triglyceriden",
+    TRUE ~ term  # Keep all other values unchanged
+  ))
+
+
 
 ##########################################################################################
 #Now we can save all objects to one .RData object so easier to load into the Markdown
