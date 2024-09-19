@@ -82,3 +82,31 @@ write.table(snps_df[[i]]["fgfp_linker"], file = outputfile_snps, col.names=F, ro
 #Save a file with all the directory names so we can loop round this in the next script
 dirnames <- names(snps_df) %>% clean_directory_name()
 write.table(dirnames, file = file.path(data.path, "phenosumstats/phenosumstats_dirnames.txt"), col.names=F, row.names=F, quote=F)
+
+
+#A few mismatches in red blood cell count and triglycerides, as multiple effect alleles at the same point mutation, we can fix this
+for(trait in c("Red blood cell count", "triglycerides")){
+allele_df <- str_sub(snps_df[[trait]]$fgfp_linker, -3) %>% str_split("_", simplify = T)
+vec <- snps_df[[trait]]$eff.allele
+
+#Find bad matches
+no_match_indices <- c()
+# Loop through the vector and check for matches, storing indices where no match is found
+for(i in 1:length(vec)){
+  if(sum(allele_df[i,] %in% vec[i]) < 1){
+    no_match_indices <- c(no_match_indices, i)  # Append index to the vector
+  }
+}
+
+#Now we can remove these from our df so prsice can run
+snps_df[[trait]] <- snps_df[["Red blood cell count"]][-no_match_indices,]
+
+#Re write out
+name <- clean_directory_name(trait)
+outputdir <- file.path(data.path, "phenosumstats",  name)
+outputfile <- file.path(outputdir, paste0(name, "_processedgwas.tsv"))
+write.table(snps_df[[trait]], file = outputfile, quote = F, row.names = F)
+}
+
+
+
