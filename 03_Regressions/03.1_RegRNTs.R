@@ -10,16 +10,18 @@
 
 #Set up
 #Library
-library(dplyr)
+library(tidyverse)
 library(data.table)
 library(broom)
+library(sensemakr)
+library(ggplot2)
+
 
 #Data path for proj dir
 data.path <- "../../../data/PhenoPRS"
 
 #Also load in path to scratch, proj_dir and fgfp data
 source("../../parameters/base_dir.R")
-gwas_table <- read.csv(file = file.path(data.path, "ProcessedGWASTable_OG_GC.csv"), header = T)
 load(file.path(data.path, "data_out/fgfpdata4prs.RData"))
 
 #Also make a vector for our confounders of interest
@@ -30,76 +32,119 @@ for (i in 1:10) {
 confounders <- c(PCs, "age", "snpsex")
 confoundbatch <- c(PCs, "age", "snpsex", "drilled.cut", "Alliquoted.by", "Aliquote.date_year", "Date.of.extraction_year", "PCR.Plate")
 
-### Now edit our "data4prs[["matchedvars"]]" slightly to remove PRSs we are no longer interested in
-data4reg <- data4prs[["matchedvars"]] %>% 
-  dplyr::filter(!prs %in% c("stool_freq.Pt_5e.08", "creatinine3.Pt_5e.08"))
+### Now edit our "data4prs[["matchedvars"]]" slightly so we can select the PRSs we would like to take forwards
+#First we want to label if our variables are cont / binary / ordinal
+#We will use the following labels:
+# 1 = binary
+# 2 = ordinal
+# 3 = continuous
+
+#See how many unique obs there are, if 3 we will label as binary, if more than 10 then we will label as continuous
+num_obs <- apply(select(data4prs$pheno_covariate_prs, data4prs$matchedvars$pheno), 2, function(x) length(unique(x)))
+
+data4prs$matchedvars$vartype <- ifelse(data4prs$matchedvars$pheno %in% names(num_obs[num_obs == 3]), 1, 2)
+data4prs$matchedvars$vartype <- ifelse(data4prs$matchedvars$pheno %in% names(num_obs[num_obs > 9]), 3, data4prs$matchedvars$vartype)
 
 ##Regress our covar PRS -> covar
-#I don't think you should be running a regression model with the factor variables
-
-#We are going to start our pipeline with just the continuous variables
-#Have also left sleeping hours per day in as it is nicely normally distributed
-#Only vars which have been left out are the "average consumption" vars
-contvars <- c("Hemoglobine_gdL",
-              "RBC_milj_mm3",
-              "Urinezuur_mgdL",
-              "HDL.chol_mgdL",
-              "BMI",
-              "Creatinine_mgdL",
-              "Triglyceriden_mgdL",
-              "e.GFR")
-
-#Break the df into continous and factor label
-data4reg$pheno_vartype <- ifelse(data4reg$pheno %in% contvars, "cont", "fact")
-
-#Extract the PRSs we want to use, removed duplicates and any factor variables at the moment
-prs2use <- data4reg[data4reg$pheno_vartype == "cont", "prs"] %>% unique()
+#Lets start with the continuous variables
 
 #Lets make df for the scaled data so can also have these coefs if needed
-prspheno_df_scale <- scale(data4prs$pheno_covariate_prs[,c(prs2use, contvars, confounders)]) %>% as.data.frame()
+#prspheno_df_scale <- scale(data4prs$pheno_covariate_prs[,c(prs2use, contvars, confounders)]) %>% as.data.frame()
 
-#Now lets extract our coefficents from the model
-###
+#Now lets extract our coefficents from the model and R2
 
+#regout_covarprs_cont_scale <- tibble()
+
+
+#Run the loop for continuous variables
 regout_covarprs_cont <- tibble()
-regout_covarprs_cont_scale <- tibble()
-for (i in 1:sum(data4reg$pheno_vartype == "cont")){
+for (i in which(data4prs$matchedvars$vartype == 3)){
 
 #Extract name of pheno and prs
-pheno <- data4reg[data4reg$pheno_vartype == "cont", "pheno"][i]
-prs <- data4reg[data4reg$pheno_vartype == "cont", "prs"][i]
+pheno <- data4prs$matchedvars[i, "pheno"]
+prs <- paste0(data4prs$matchedvars[i, "prs"], ".Pt_5e.08")
 
 #First run regression unscaled
-m <- lm(reformulate(c(confounders, pheno), response = prs), data = data4prs$pheno_covariate_prs)
-out <- tidy(m, conf.int = TRUE) %>% dplyr::filter(term == pheno) %>% cbind(nobs(m))
-regout_covarprs_cont <- rbind(regout_covarprs_cont, out) 
+m <- lm(reformulate(c(confounders, prs), response = pheno), data = data4prs$pheno_covariate_prs)
+out <- tidy(m, conf.int = TRUE) %>% dplyr::filter(term == prs) %>% cbind(nobs(m))
 
-#Then scale
-m_scale <- lm(reformulate(c(confounders, pheno), response = prs), data = prspheno_df_scale)
-out2 <- tidy(m_scale, conf.int = T) %>% dplyr::filter(term == pheno) %>% cbind(nobs(m_scale))
-regout_covarprs_cont_scale <- rbind(regout_covarprs_cont_scale, out2) 
+#We also want to add the partial R2 of the model
+out <- cbind(out, partial_r2(m)[prs])
+
+regout_covarprs_cont <- rbind(regout_covarprs_cont, out) 
 }
 
+
+##### Which beta coefficients are not significant ?
+bad_prs_cont <- gsub(".Pt_5e.08", "", filter(regout_covarprs_cont, p.value > 0.01)[["term"]])
+
+
+#Now lets look at the binary variables
+#########################################
+
+#Now we can look at our binary variables - these will need to be cleaned first
+binary_variables <- data4prs$matchedvars[data4prs$matchedvars$vartype == 1, "pheno"]
+
+#Clean binary variables so are all 1/0
+data4prs$pheno_covariate_prs[binary_variables] <- 
+  data4prs$pheno_covariate_prs[binary_variables] %>%
+  mutate(
+    # Convert TRUE/FALSE to 0/1
+    across(where(is.logical), ~ as.numeric(.)),
+    
+    # Convert yes/no to 1/0
+    across(where(~ is.character(.) && all(. %in% c("yes", "no", NA))), 
+           ~ as.numeric(factor(., levels = c("no", "yes"))) - 1),
+    
+    # If already 0/1, leave as is (no conversion needed for numeric 0/1)
+    across(where(is.numeric), ~ .)
+  )
+
+
+#Now we can run logistic regression
+
+regout_covarprs_bin <- tibble()
+for (i in which(data4prs$matchedvars$vartype == 1)){
+  
+  #Extract name of pheno and prs
+  pheno <- data4prs$matchedvars[i, "pheno"]
+  prs <- paste0(data4prs$matchedvars[i, "prs"], ".Pt_5e.08")
+  
+  #First run regression unscaled
+  m <- glm(reformulate(c(confounders, prs), response = pheno), data = data4prs$pheno_covariate_prs, family = binomial(link = "logit"))
+  out <- tidy(m, conf.int = TRUE) %>% dplyr::filter(term == prs) %>% cbind(nobs(m))
+  
+  regout_covarprs_bin <- rbind(regout_covarprs_bin, out) 
+}
+
+
+#### None of the logistic regression models suggest evidence of association with PRS
+
+
+#### All of the others are also unlikely to associate, so we will stick with the continuous variables !
+
+phenos2use <- filter(data4prs$matchedvars, vartype == 3 & !prs %in% bad_prs_cont)
+
+data4prs[["phenos2use"]] <- filter(data4prs$matchedvars, vartype == 3 & !prs %in% bad_prs_cont)
+
+data4prs[["r2ofcovars"]] <- regout_covarprs_cont
 
 #Combine the PRS name with output
 regout_covarprs_cont <- cbind(regout_covarprs_cont, data4reg[data4reg$pheno_vartype == "cont", "prs"])
 regout_covarprs_cont_scale <- cbind(regout_covarprs_cont_scale, data4reg[data4reg$pheno_vartype == "cont", "prs"])
 
-
-
-#Save the output to object
-regout_covarprs <- list(data4reg = data4reg, 
-     regout_covarprs_cont = regout_covarprs_cont,
-     regout_covarprs_cont_scale = regout_covarprs_cont_scale)
-
+#Now we can save our new data object
+save(data4prs, file = file.path(data.path, "data_out/fgfpdata4prs.RData"))
 
 
 ####################################################################
 #Next we can run the linear regression of PRS -> RNT MT
 ####################################################################
 
+prs2use <- paste0(data4prs$phenos2use$prs, ".Pt_5e.08")
+
 #First lets make a df with all our variables of interest, this will be our confounders, cont PRSs and MTs
-prsmicropheno_df <- merge(data4prs$pheno_covariate_prs[,c(prs2use, contvars, "fgfp_id")],
+prsmicropheno_df <- merge(data4prs$pheno_covariate_prs[,c(data4prs$phenos2use$pheno, prs2use, "fgfp_id")],
                      dplyr::select(data4prs$gwasedmts, linker, ends_with("RNTRes")),
                      by.x = "fgfp_id",
                      by.y = "linker",
@@ -145,20 +190,12 @@ regout_prsRNTs <- list(regout_RNTs_univar = regout_RNTs_univar,
 ####################################################################
 #Next we can run the observational regression of covar -> RNT MT
 ####################################################################
-#Load in h2 bugs object
-load(file = file.path(data.path, "data_out/h2bugs_02.2.RData"))
-
-#For these traits with PRS signal do we also see an observational signal?
-signal <- lapply(regout_prsRNTs, 
-                 function(x) filter(x, mt %in% paste0(RNT_h2_traits$TaxaName, "_RNTRes") &
-                                      p.value < 0.05))
-
 #Can just look at those with signal as highlighted above, however I think best to run for all then filter on the ones we are interested in after
 
 obs_est <- tibble()
 for(mt in RNTs){
 
-for(pheno in contvars)  {
+for(pheno in data4prs$phenos2use$pheno)  {
     lm <- lm(reformulate(pheno, response = mt), data = prsmicropheno_df_scale)
     out <- lm %>% 
       tidy() %>% 
@@ -187,11 +224,19 @@ obs_est <- obs_est %>%
 
 obs_est <- obs_est %>% 
   mutate(covar_name = case_when(
-    term == "Hemoglobine_gdL" ~ "Hemoglobine",
-    term == "RBC_milj_mm3" ~ "RBC",
-    term == "Urinezuur_mgdL" ~ "Urinezuur",
+    term == "GPT_UL" ~ "Alannine_aminotransferase",
+    term == "CK_UL" ~ "Creatine_kinase",
+    term == "Gamma.GT_UL" ~ "Gamma_glutamyltransferase",
     term == "HDL.chol_mgdL" ~ "HDL",
-    term == "Triglyceriden_mgdL" ~ "Triglyceriden",
+    term == "Hemoglobine_gdL" ~ "Hemoglobine",
+    term == "hip_circumference" ~ "Hip_circumference",
+    term == "MCHC_g_dL" ~ "Mean_corp_hem_conc",
+    term == "RBC_milj_mm3" ~ "Red_Blood_Cells",
+    term == "Creatinine_mgdL" ~ "Creatinine",
+    term == "Ureum_mgdL" ~ "Urea",
+    term == "Urinezuur_mgdL" ~ "Uric_acid",
+    term == "Height" ~ "Height",
+    term == "Triglyceriden_mgdL" ~ "Triglycerides",
     TRUE ~ term  # Keep all other values unchanged
   ))
 
@@ -200,6 +245,6 @@ obs_est <- obs_est %>%
 ##########################################################################################
 #Now we can save all objects to one .RData object so easier to load into the Markdown
 ##########################################################################################
-save(regout_covarprs, regout_prsRNTs, obs_est,
+save(regout_prsRNTs, obs_est,
      file = file.path(data.path, "data_out/data_Reg03.1.RData"))
 
