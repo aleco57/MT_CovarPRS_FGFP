@@ -25,6 +25,8 @@ library(DataExplorer)
 library(patchwork)
 library(forcats)
 library(makepipe)
+library(tidyr)
+library(ggh4x)
 
 #Data path for proj dir
 data.path <- "../../../data/PhenoPRS"
@@ -49,6 +51,36 @@ make_with_source(
 #Now load the data
 load(file.path(data.path, "data_out/data_Reg03.1.RData"))
 
+#Load in the consistent associations from script 03.2
+make_with_source(
+  source = "../03_Regressions/03.2_FindConsistentAssociations.R", 
+  targets = file.path(data.path, "data_out/data_ConsistentAssoc03.2.RData"), 
+  dependencies = file.path(data.path, "data_out/data_Reg03.1.RData")
+)
+
+#Now load the data
+load(file.path(data.path, "data_out/data_ConsistentAssoc03.2.RData"))
+
+#Now load in the GREML genetic correlation results
+#Can't get this make_with_source to run - go back and fix this
+#make_with_source(
+#  source = "../04_HeritabilityCalcs/04.3_GeneticCor/04.3.3_CompileCorEst.R", 
+#  targets = file.path(data.path, "greml/greml_out/h2out_cor_dircons/clean_out.txt"), 
+#  dependencies = file.path(data.path, "greml/greml_out/h2out_cor_dircons")
+#)
+
+genetic_cor <- read.table(file.path(data.path, "greml/greml_out/h2out_cor_dircons/clean_out.txt"), header = T,
+                          sep = "\t")
+
+obs_prs_cor_filt <- read.table(file = file.path(data.path, "greml/greml_out/h2out_cor_dircons/clean_out_withobsprs.txt"), header = T, sep = "\t")
+
+
+
+#Now load in the heritability adjustment results
+h2out <- list()
+for(i in c("dircons", "h2bugs")){
+  h2out[[i]] <- read.table(file.path(data.path, paste0("greml/greml_out/h2_out/", i, "/cleanh2est.txt")), header = T, sep = "\t")
+}
 
 #State filepath to our figures in the markdown
 fallonyjpeg <- file.path(data.path, "markdowns/figs/fallonyfig.jpeg")
@@ -65,13 +97,13 @@ methodsjpeg <- file.path(data.path, "markdowns/figs/method.jpg")
 ### Methods
 
 1.  Select covariates of the microbiome
-2.  Generate PRSs for these covariates
-3.  Regress PRSs onto those heritable MTs from Dave's paper, do we see signal?
-4.  For those with signal, we can then run further analyses to unpick these associations:
-    (a) Recalculation of h2 of heritable MTs before and after PRS adjustement
-    (b) Observational estimate between the MT and covariate
-    (c) Genetic correlation between the two traits
-5.  For those with consistent signal for our methodologies, we can generate a PRS of the microbial trait and run a parallel 2SMR analysis with the covariable and microbial trait
+2.  Generate observational estimate for convariate on microbial trait
+3.  Generate PRSs for these covariates  
+4.  For those with observational signal, we can then run further analyses to unpick these associations:
+    (a) Regress PRSs onto Microbial trait
+    (b) Genetic correlation between the two traits
+    (c) Recalculation of h2 of heritable MTs before and after PRS adjustement - is the covar driving mt h2?
+5.  For those with directionally consistent signal for all steps, we can then generate a PRS of the microbial trait and the covariate to run a parallel 2SMR analysis with an outcome of interest. Preferably an outcome where we know to be a strong causal association between the covariate and the outcome.
 
 ##### Methodological overview
 
@@ -160,103 +192,196 @@ miss[,-1] %>%
   kable_styling()
 ```
 
-Due to the missingness structure, we will take forward the creatinine variable to proxy kindey function instead.
+* Due to the missingness structure, we will take forward the creatinine variable to proxy kidney function instead.
+* At the moment we have just removed these two variables
 
-### PRS -> MTs
-* First we can focus our analyses on Dave's RNT Microbial traits which were generated for the FGFP GWAS
+### Observational Analysis. Covariate -> RNT MT
 
-Below highlight the MT traits which showed evidence of h2 as estimated by GREML:
+* First we want to run our observational analyses to see where we have evidence of signal
 
-```{r}
-#Read in hughes supp file with h2 results
-#First check if script has changed from makepipe
-make_with_source(
-  source = "../02_CompileData/02.2_findheritableMTs.R", 
-  targets = file.path(data.path, "data_out/h2bugs_02.2.RData"), 
-  dependencies = file.path(data.path, "Hughes_mtGWAS.xlsx"))
+```{r, fig.width=18, fig.height=15}
+#Remove unwanted obs estimates as not looking at these for now
+obs_est_rm <- filter(obs_est, !term %in% c("e.GFR", "Creatinine_mgdL"))
 
-load(file = file.path(data.path, "data_out/h2bugs_02.2.RData"))
-
-RNT_h2_traits %>%
-  kbl(digits = 2) %>%
-  kable_styling()
-
-```
-
-* Now we regress our PRSs onto these heritable microbial traits to see where there is evidence of signal
-
-```{r}
-#Lets filter our scaled lm output into only those heritable bugs
-filterandnamechange <- function(x){
-df <- filter(x, mt %in% paste0(RNT_h2_traits$TaxaName, "_RNTRes"))
-df$PRS <- gsub(".Pt_5e.08", "_PRS", df$term) 
-return(df)
-}
-
-h2mtsres <- lapply(regout_prsRNTs, 
-                 FUN = filterandnamechange)
-
-signal <- lapply(h2mtsres, 
-                 function(x) filter(x, p.value < 0.05))
-
-#What prs' are we looking at?
-prs2use <- regout_covarprs$regout_covarprs_cont_scale$`data4reg[data4reg$pheno_vartype == "cont", "prs"]` %>% unique()
-```
-
-* `r nrow(RNT_h2_traits)` Microbial traits and `r length(prs2use)` covariate PRSs have been used for the regressions
-* All of the regressions run can be visualised below:
-
-```{r}
 ggforestplot::forestplot(
-  df = h2mtsres$regout_RNTs_univar,
+  df = obs_est_rm,
   name = mt,
   estimate = estimate,
   se = std.error,
   pvalue = p.value,
-  psignif = 0.05,
-  colour = PRS,
-  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading to the covariates of interest",
-  title = "Regression coefficents from PRS covariate on Microbial trait")
-```
+  colour = covar_name,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase of the covariate in FGFP",
+  title = "Regression coefficents from Observational analyses of Covariate regressed on RNT Microbial Traits in FGFP") +
+  facet_wrap(
+    facets = ~group,
+    ncol = 3,  # Number of columns
+    nrow = 2,  # Number of rows
+    scales = "free_y",
+  )
 
-* Lets filter to those beta coefficents with evidence of signal
-* And also present those with bonferonni corrected signal, those points which are filled in show evidence of bonferroni correct association
-
-```{r}
+#We can also look at those with sig observational results
 ggforestplot::forestplot(
-  df = signal$regout_RNTs_univar,
+  df = filter(obs_est_rm, p.value < 0.05),
   name = mt,
   estimate = estimate,
   se = std.error,
   pvalue = p.value,
-  psignif = 0.05/length(prs2use),
-  colour = PRS,
-  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading to the covariates of interest",
-  title = "Regression coefficents from PRS covariate on Microbial trait")
-```
-
-### Observational Esimate: Covariate -> RNT MT
-
-* Do our observational estimates agree with the traits showing evidence for an association with the PRS?
-
-```{r}
-obs_est$PRS <- rep("Observational", nrow(obs_est))
-colnames(obs_est)[6] <- "nobs(lm2)"
-obs_sigprs <- rbind(signal$regout_RNTs_univar, obs_est)
-
-ggforestplot::forestplot(
-  df = obs_sigprs,
-  name = mt,
-  estimate = estimate,
-  se = std.error,
-  pvalue = p.value,
-  psignif = 0.05/length(prs2use),
-  colour = PRS,
+  colour = covar_name,
   xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading of the covariate / the measure covariate",
-  title = "Regression coefficents from PRS covariate on Microbial trait")
+  title = "Regression coefficents from Observational analyses of Covariate regressed on RNT Microbial Traits in FGFP") +
+  ggforce::facet_wrap_paginate(
+    facets = ~group,
+    ncol = 3,  # Number of columns
+    nrow = 2,  # Number of rows
+    scales = "free_y"
+  )
+
 ```
 
-* We see consistency in for the latter trait
-* Do we also see this consistency in Genetic correlation between the two observational triats?
+* `r obs_est_rm$mt %>% unique %>% length` Microbial traits and `r obs_est_rm$covar_name %>% unique %>% length` covariate PRSs have been used for the regressions. 
+* A total of `r nrow(obs_est_rm)` observational regressions
+* `r filter(obs_est_rm, p.value < 0.05) %>% nrow` regressions showed a suggestive evidence of an associaiton P < 0.05.
+* `r filter(obs_est_rm, p.value < 0.05/nrow(obs_est_rm)) %>% nrow` regressions showed strong evidence of an association (bonferonni corrected: 0.05 / `r nrow(obs_est_rm)`)
 
-## Genetic Correlation
+
+### PRS Analysis: Covariate PRS -> RNT MT
+* Now we can Generate PRSs for our covariates (as shown above) and regress these PRSs onto the RNT MTs.
+* We can further subset our data to those results with suggestive observational results and beta directional agreement in the PRS analysis
+
+
+```{r, fig.width=18, fig.height=15}
+#We can also look at those with sig observational results
+
+#First reshape the data
+obsest_prsest_long <- obsest_prsest %>%
+  pivot_longer(cols = c(estimate_obs, estimate_prs), 
+               names_to = "type", 
+               values_to = "estimate") %>%
+  pivot_longer(cols = c(std.error_obs, std.error_prs), 
+               names_to = "error_type", 
+               values_to = "std.error") %>%
+  pivot_longer(cols = c(p.value_obs, p.value_prs), 
+               names_to = "p_value_type", 
+               values_to = "p.value") %>%
+  filter((type == "estimate_obs" & error_type == "std.error_obs" & p_value_type == "p.value_obs") |
+         (type == "estimate_prs" & error_type == "std.error_prs" & p_value_type == "p.value_prs")) %>%
+  mutate(type = recode(type, estimate_obs = "Observational", estimate_prs = "PRS"))
+
+
+
+#Forest plot for the observational and PRS estimate
+ggforestplot::forestplot(
+  df = obsest_prsest_long,
+  name = covar_name,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  colour = type,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading of the covariate / the measure covariate",
+  title = "Regression coefficents from Observational analyses of Covariate regressed on RNT Microbial Traits in FGFP") +
+  ggforce::facet_wrap_paginate(
+    facets = ~mt,
+    ncol = 4,  # Number of columns
+    nrow = 15,  # Number of rows
+    scales = "free_y"
+  )
+```
+
+
+# Genetic Correlation
+
+* For those traits with consistent estimates in PRS and observational analysis, does Genetic Cor estimated through GREML also agree?
+
+```{r}
+# Combine the observational and PRS estimates for plotting
+plot_data <- obs_prs_cor_filt %>%
+  select(term, mt, estimate_obs, std.error_obs, estimate_prs, std.error_prs) %>%
+  pivot_longer(cols = c(estimate_obs, estimate_prs),
+               names_to = "type",
+               values_to = "estimate") %>%
+  mutate(std.error = ifelse(type == "estimate_obs", std.error_obs, std.error_prs),
+         type = ifelse(type == "estimate_obs", "Observational", "PRS"))
+
+# Create a separate data frame for the genetic correlation estimates
+rg_data <- obs_prs_cor_filt %>%
+  select(term, mt, rg, rg_se) %>%
+  rename(estimate = rg, std.error = rg_se) %>%
+  mutate(type = "Genetic Correlation")
+
+# Combine the data frames for plotting
+combined_data <- bind_rows(plot_data, rg_data)
+
+# Filter out mts that are not relevant for specific terms
+filtered_data <- combined_data %>%
+  group_by(term, type) %>%
+  filter(!is.na(estimate)) %>%
+  ungroup()
+
+# Reorder the type factor to ensure the correct order in the plot
+filtered_data$type <- factor(filtered_data$type, levels = c("Observational", "PRS", "Genetic Correlation"))
+
+# Create the forest plot with facets
+ggplot(filtered_data, aes(x = estimate, y = mt, color = type)) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(xmin = estimate - 1.96 * std.error,
+                    xmax = estimate + 1.96 * std.error),
+                width = 0.2, position = position_dodge(width = 0.5)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +  # Add dashed red line at x = 0
+  facet_grid(term ~ type, scales = "free", switch = "y") +
+  theme_minimal() +
+  labs(title = "Forest Plot of Observational, PRS Betas, and Genetic Correlation",
+       x = "Estimate",
+       y = "Microbiome Trait",
+       color = "Estimate Type") +
+  theme(legend.position = "bottom",
+        strip.text.y = element_text(angle = 0),  # Adjust angle for term labels
+        panel.grid.minor = element_blank())  # Remove minor grid lines
+```
+
+
+# Adjusted h2
+
+* For those traits with consistent estimates in PRS, observational analysis and genetic correlation, does the h2 of the MT change after adjusting for the covariate PRS?
+
+```{r}
+#First extract the bug names by removing any part of the string after "_res_" in the trait column 
+h2out[["dircons"]] <- h2out[["dircons"]] %>%
+  mutate(bug = gsub("_res_.*", "", trait))
+
+#Plot estimates from h2out[["dircons"]] so we can see the adjusted and unadjusted h2 estimates, if ends with 5e.08, these are the adjusted phenotypes
+h2out[["dircons"]] %>%
+  ggplot(aes(x = h2, y = bug, color = ifelse(grepl("5e.08", trait), "Adjusted", "Unadjusted"))) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(xmin = h2 - 1.96 * se, xmax = h2 + 1.96 * se), position = position_dodge(width = 0.5)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(title = "Heritability Estimates of Microbiome Traits Before and After Adjustment for Covariate PRS",
+       x = "Heritability Estimate",
+       y = "Microbiome Trait",
+       color = "Adjustment Type") +
+  theme(legend.position = "bottom")
+```
+
+* It appears no difference in the hertiable estimates. What if instead we took the most heritable MTs and looked at adjusting these with our covariate PRS, does this make any difference?
+
+```{r}
+#First extract the bug names by removing any part of the string after "_res_" in the trait column 
+h2out[["h2bugs"]] <- h2out[["h2bugs"]] %>%
+  mutate(bug = gsub("_allprs_res", "", trait),
+         bug = gsub("_sigprs_res", "", bug))
+
+#Plot estimates from h2out[["dircons"]] so we can see the adjusted and unadjusted h2 estimates, if ends with 5e.08, these are the adjusted phenotypes
+h2out[["h2bugs"]] %>%
+  ggplot(aes(x = h2, y = bug, color = ifelse(grepl("prs", trait), "Adjusted", "Unadjusted"))) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(xmin = h2 - 1.96 * se, xmax = h2 + 1.96 * se), position = position_dodge(width = 0.5)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(title = "Heritability Estimates of Microbiome Traits Before and After Adjustment for Covariate PRS",
+       x = "Heritability Estimate",
+       y = "Microbiome Trait",
+       color = "Adjustment Type") +
+  theme(legend.position = "bottom")
+```
+
+* Again, no difference in the hertiable estimates. This suggests that the covariates are not driving the heritability of the MTs, or that power is a driving limitation here

@@ -1,0 +1,516 @@
+---
+title: "Results_Updated"
+author: "Alec McKinlay"
+date: "2024-09-24"
+output: html_document
+---
+
+```{r, echo = FALSE, message=FALSE, warning=FALSE}
+
+#Set options for the fig sides
+knitr::opts_chunk$set(fig.width=18, fig.height=14, echo = F, message=F, warning=F)
+
+#Set up and read in files
+#setwd to 05_Markdowns folder
+
+#Library 
+library(tidyverse)
+library(data.table)
+library(readxl)
+library(kableExtra)
+library(ggplot2)
+library(ggforestplot)
+library(DataExplorer)
+library(patchwork)
+library(forcats)
+library(makepipe)
+library(tidyr)
+library(ggh4x)
+
+#Data path for proj dir
+data.path <- "../../../data/PhenoPRS"
+
+#Also load in path to scratch, proj_dir and fgfp data
+source("../../parameters/base_dir.R")
+
+#Load the data in, incase we use this
+load(file.path(data.path, "data_out/fgfpdata4prs.RData"))
+
+#Now load the data
+load(file.path(data.path, "data_out/data_Reg03.1.RData"))
+
+#Now load the data
+load(file.path(data.path, "data_out/data_ConsistentAssoc03.2.RData"))
+
+#State filepath to our figures in the markdown
+fallonyjpeg <- file.path(data.path, "markdowns/figs/fallonyfig.jpeg")
+methodsjpeg <- file.path(data.path, "markdowns/figs/method.jpg")
+
+#Read in excel spread sheet with covariates
+gwas_ref <- read.csv(file.path(data.path, "phenogwas_map.csv"), header = T, skip = 1)
+
+#Load in Genetic cor and h2 adjust results
+genetic_cor <- read.table(file.path(data.path, "greml/greml_out/h2out_cor_dircons/clean_out.txt"), header = T,
+                          sep = "\t")
+
+obs_prs_cor_filt <- read.table(file = file.path(data.path, "greml/greml_out/h2out_cor_dircons/clean_out_withobsprs.txt"), header = T, sep = "\t")
+
+
+
+#Now load in the heritability adjustment results
+h2out <- list()
+for(i in c("dircons", "h2bugs")){
+  h2out[[i]] <- read.table(file.path(data.path, paste0("greml/greml_out/h2_out/", i, "/cleanh2est.txt")), header = T, sep = "\t")
+}
+
+fallonyjpeg <- file.path(data.path, "markdowns/figs/fallonyfig.jpeg")
+
+```
+
+
+# Need to add in shortoverview here along with heritable confounder DAGs
+
+### Decide on covariates
+
+Fallony et al studies which covariates in FGFP explained the most variation in beta diversity. We have taken the top covariates forward to generate PRSs for
+
+##### Fallony covariates
+
+![Fallony Figure](`r fallonyjpeg`)
+
+# Lets chose our covariates to make PRS on
+```{r}
+## Display the traits we are actually working with
+
+#First make nice to look at
+data4prs$phenos2use <- data4prs$phenos2use %>% 
+  mutate(covar_name = case_when(
+    pheno == "GPT_UL" ~ "Alannine_aminotransferase",
+    pheno == "CK_UL" ~ "Creatine_kinase",
+    pheno == "Gamma.GT_UL" ~ "Gamma_glutamyltransferase",
+    pheno == "HDL.chol_mgdL" ~ "HDL",
+    pheno == "Hemoglobine_gdL" ~ "Hemoglobine",
+    pheno == "hip_circumference" ~ "Hip_circumference",
+    pheno == "MCHC_g_dL" ~ "Mean_corp_hem_conc",
+    pheno == "RBC_milj_mm3" ~ "Red_Blood_Cells",
+    pheno == "Creatinine_mgdL" ~ "Creatinine",
+    pheno == "Ureum_mgdL" ~ "Urea",
+    pheno == "Urinezuur_mgdL" ~ "Uric_acid",
+    pheno == "Height" ~ "Height",
+    pheno == "Triglyceriden_mgdL" ~ "Triglycerides",
+    TRUE ~ pheno  # Keep all other values unchanged
+  ))
+
+data4prs$r2ofcovars$term2 <- gsub(".Pt_5e.08", "", data4prs$r2ofcovars$term)
+
+viz_df <- merge(data4prs$phenos2use, data4prs$r2ofcovars, by.x="prs", by.y = "term2") %>%
+  select(covar_name, `partial_r2(m)[prs]`, p.value)
+
+colnames(viz_df) <- c("Covariate", "Partial R2", "Beta_pval") 
+
+```
+
+* The follow covariates were taken forward to regress on microbiome traits as suggested sufficent variance explained in the covariate by its PRS
+
+```{r}
+viz_df %>%
+  mutate(`Partial R2` = scales::percent(`Partial R2`, accuracy = 0.01),
+         Beta_pval = format(Beta_pval, scientific = TRUE, digits = 2)) %>%
+  kbl() %>%
+  kable_styling()
+```
+
+## Regression of PRS on microbiome traits
+
+* For this analysis, we will be using RNTs to capture microbiome variation as were GWAS'd in the FGFP paper by Hughes et al.
+* Lets have an overview of these traits
+
+```{r}
+#Work out how many of each category there are of the microbiome traits
+taxa_group <- filter(obs_est, term == "GPT_UL")["group"]
+
+#Make factor so levels don't change
+taxa_group$group <- factor(taxa_group$group, levels = unique(taxa_group$group))
+
+# Create a bar plot using ggplot2
+ggplot(taxa_group, aes(x = group)) +
+  geom_bar(fill = "skyblue") +   # Bar chart with color
+  geom_text(stat = 'count', aes(label = ..count..), vjust = -0.5) +   # Bar chart with color
+  labs(title = "Number of Microbiome Outcomes by Taxa Group", 
+       x = "Taxa Group", 
+       y = "Count of Outcomes") + 
+  theme_minimal() +              
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+* We are therefore looking at a total of `r nrow(taxa_group)` microbiome traits and `r nrow(viz_df)` covariates.
+
+## Observational Analysis of PRS on Microbiome Traits
+
+* First we can look at a very busy forest plot of all the regressions run
+* Then we can look at a heatmap and bar chart showing how much observational signal we observe
+```{r}
+#Make factor so levels don't change
+obs_est$group <- factor(obs_est$group, levels = unique(obs_est$group))
+
+ggforestplot::forestplot(
+  df = obs_est,
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  colour = term,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase of the covariate in FGFP",
+  title = "Regression coefficents from Observational analyses of Covariate regressed on RNT Microbial Traits in FGFP") +
+  facet_wrap(
+    facets = ~group,
+    ncol = 3,  # Number of columns
+    nrow = 2,  # Number of rows
+    scales = "free_y",
+  )
+
+### Heat Map
+
+# Assuming obs_est is your dataframe and has columns: term, mt, p.value, group
+obs_est %>%
+  # Create a binary column for significance: 1 if p < 0.05, else 0
+  mutate(sig = ifelse(p.value < 0.05, 1, 0)) %>%
+  
+  # Reorder the x-axis based on the number of significant results (descending order)
+  group_by(covar_name) %>%
+  mutate(sig_count = sum(sig)) %>%
+  ungroup() %>%
+  mutate(covar_name = reorder(covar_name, -sig_count)) %>%  # Reorder based on significant results
+  
+  # Create the heatmap
+  ggplot(aes(x = covar_name, y = mt, fill = factor(sig))) +  # Convert sig to a factor for discrete color mapping
+  geom_tile(color = "grey80", size = 0.5) +  # Add borders to tiles
+  
+  # Use manual color scale for binary significance: white for 0, blue for 1
+  scale_fill_manual(values = c("0" = "white", "1" = "blue"),
+                    name = "Significance",
+                    labels = c("0" = "No Observational Signal",
+                               "1" = "Observational Estimate p < 0.05")) +
+  
+  # Facet by group on the y-axis to add headers
+  facet_grid(group ~ ., scales = "free", space = "free") +  # Grouped by 'group' column, free scaling
+  
+  # Labels and formatting
+  labs(title = "Observational associations between microbiome traits and covariates of interest, indicating where there is evidence of singal",
+       subtitle = "Blue indicates p < 0.05",
+       x = "Observational covariate",
+       y = "Microbiome Traits") +
+  
+  # Theme for improved aesthetics
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),  # Rotate x-axis labels
+    axis.text.y = element_text(size = 11),  # Larger y-axis labels
+    axis.title = element_text(size = 13, face = "bold"),  # Bold axis titles
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Center and bold title
+    plot.subtitle = element_text(hjust = 0.5, size = 12),  # Center subtitle
+    strip.text.y = element_text(size = 12, face = "bold", angle = 0),  # Bold group labels on y-axis
+    panel.grid = element_blank()  # Remove gridlines
+  )
+
+
+# Bar chart
+# Assuming obs_est has columns: covar_name, mt, p.value, group
+obs_est %>%
+  # Create a binary variable for significance (1 = significant, 0 = not significant)
+  mutate(sig = ifelse(p.value < 0.05, 1, 0)) %>%
+  
+  # Group by covariate and significance, then count the number of results in each group
+  group_by(covar_name, sig) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  
+  # Reorder the x-axis (covar_name) based on the total number of significant results (descending)
+  group_by(covar_name) %>%
+  mutate(total_sig = sum(ifelse(sig == 1, count, 0))) %>%
+  ungroup() %>%
+  mutate(covar_name = reorder(covar_name, -total_sig)) %>%
+  
+  # Create the bar plot
+  ggplot(aes(x = covar_name, y = count, fill = factor(sig))) +
+  geom_bar(stat = "identity", position = "dodge", color = "black", size = 0.3) +  # Dodged bar chart
+  
+  # Define the color scale for significant vs non-significant bars
+  scale_fill_manual(values = c("0" = "lightgray", "1" = "blue"), 
+                    labels = c("No Signal", "Signal (p < 0.05)"), 
+                    name = "Association") +
+  
+  # Add labels and titles
+  labs(title = "Number of associations with pval > 0.05 from observational regressions",
+       x = "Covariate",
+       y = "Count of Outcomes") +
+  
+  # Improve theme aesthetics
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),  # Tilt x-axis labels
+    axis.text.y = element_text(size = 11),  # Larger y-axis labels
+    axis.title = element_text(size = 13, face = "bold"),  # Bold axis titles
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Center and bold title
+    legend.position = "top"  # Move legend to top for better layout
+  )
+```
+
+
+# Do our PRS show consistnent associations with the observational results?
+
+```{r}
+# Lets revisit our heatmap, but this time with observational agreeement
+
+
+obsest_prsest %>%
+  # Update the sig column with descriptive labels
+  mutate(sig = ifelse(p.value_obs < 0.05 & sign(estimate_obs) == sign(estimate_prs), "Beta_Agree", 
+                      ifelse(p.value_obs < 0.05, "Beta_Disagree", "No_Obs_Signal"))) %>%
+  
+  # Reorder the x-axis based on the number of significant results (descending order)
+  group_by(covar_name) %>%
+  mutate(sig_count = sum(sig != "No_Obs_Signal")) %>%  # Counting only the significant results
+  ungroup() %>%
+  mutate(covar_name = reorder(covar_name, -sig_count)) %>%
+  
+  # Create the heatmap
+  ggplot(aes(x = covar_name, y = mt, fill = sig)) +  # Use the 'sig' column directly for fill
+  geom_tile(color = "grey80", size = 0.5) +  # Add borders to tiles
+  
+  # Custom color scheme: white for No Signal, red for Disagreement, blue for Agreement
+  scale_fill_manual(values = c("No_Obs_Signal" = "white", "Beta_Disagree" = "red", "Beta_Agree" = "blue"),
+                    name = "Significance",
+                    labels = c("No_Obs_Signal" = "No Observational Signal",
+                               "Beta_Disagree" = "Beta Disagree",
+                               "Beta_Agree" = "Beta Agree")) +
+  
+  # Facet by group on the y-axis to add headers
+  facet_grid(group ~ ., scales = "free", space = "free") +  # Grouped by 'group' column, free scaling
+  
+  # Labels and formatting
+  labs(title = "Beta Directionality Agreement Between Observational and PRS Regressions",
+       subtitle = "Blue: Beta Agreement, Red: Beta Disagreement, White: No Observational Signal",
+       x = "Observational Covariate",
+       y = "Microbiome Traits") +
+  
+  # Theme for improved aesthetics
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),  # Rotate x-axis labels
+    axis.text.y = element_text(size = 11),  # Larger y-axis labels
+    axis.title = element_text(size = 13, face = "bold"),  # Bold axis titles
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Center and bold title
+    plot.subtitle = element_text(hjust = 0.5, size = 12),  # Center subtitle
+    strip.text.y = element_text(size = 12, face = "bold", angle = 0),  # Bold group labels on y-axis
+    panel.grid = element_blank()  # Remove gridlines
+  )
+
+
+
+
+
+## Lets also make a bar chart so we can see results of this more clearly
+obsest_prsest %>%
+  # Create a binary variable for significance (1 = significant, 0 = not significant)
+  mutate(sig = ifelse(p.value_obs < 0.05 & sign(estimate_obs) == sign(estimate_prs), "Beta_Agree", 
+                      ifelse(p.value_obs < 0.05, "Beta_Disagree", "No_Obs_Signal"))) %>%
+  
+  # Filter out 'No_Obs_Signal' to focus only on significant results
+  filter(sig != "No_Obs_Signal") %>%
+  
+  # Group by covariate and significance, then count the number of results in each group
+  group_by(covar_name, sig) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  
+  # Reorder the x-axis (covar_name) based on the total number of significant results (descending)
+  group_by(covar_name) %>%
+  mutate(total_sig = sum(count)) %>%
+  ungroup() %>%
+  mutate(covar_name = reorder(covar_name, -total_sig)) %>%
+  
+  # Create the bar plot
+  ggplot(aes(x = covar_name, y = count, fill = sig)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black", size = 0.3) +  # Dodged bar chart
+  
+  # Define the color scale for agreement/disagreement bars
+  scale_fill_manual(values = c("Beta_Disagree" = "red", "Beta_Agree" = "blue"), 
+                    labels = c("Beta Agree", "Beta Disagree"), 
+                    name = "Association") +
+  
+  # Add labels and titles
+  labs(title = "Bar chart displaying the number of suggestive associations from observational regressions, coloured by agreement with PRS regressions",
+       x = "Covariate",
+       y = "Count of Outcomes") +
+  
+  # Improve theme aesthetics
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 11),  # Tilt x-axis labels
+    axis.text.y = element_text(size = 11),  # Larger y-axis labels
+    axis.title = element_text(size = 13, face = "bold"),  # Bold axis titles
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  # Center and bold title
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 11)
+  )
+
+```
+
+* Where do we have our strongest evidence of observational and PRS agreement i.e. the bug may just be capturing the phenotype
+* Lets chose our best candidate bugs where we believe it to be capturing a covariate
+```{r}
+# Make a forest plot of the candidiate_bugs
+#We can also look at those with sig observational results
+#First reshape the data
+obsest_prsest_long <- candidate_bugs %>%
+  pivot_longer(cols = c(estimate_obs, estimate_prs), 
+               names_to = "type", 
+               values_to = "estimate") %>%
+  pivot_longer(cols = c(std.error_obs, std.error_prs), 
+               names_to = "error_type", 
+               values_to = "std.error") %>%
+  pivot_longer(cols = c(p.value_obs, p.value_prs), 
+               names_to = "p_value_type", 
+               values_to = "p.value") %>%
+  filter((type == "estimate_obs" & error_type == "std.error_obs" & p_value_type == "p.value_obs") |
+         (type == "estimate_prs" & error_type == "std.error_prs" & p_value_type == "p.value_prs")) %>%
+  mutate(type = recode(type, estimate_obs = "Observational", estimate_prs = "PRS"))
+
+
+
+#Forest plot for the observational and PRS estimate
+ggforestplot::forestplot(
+  df = filter(obsest_prsest_long, group != "Diversity"),
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  colour = type,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading of the covariate / the measure covariate",
+  title = "Regression coefficents from Observational analyses of Covariate regressed on RNT microbial Traits in FGFP") +
+  ggforce::facet_col(
+    facets = ~covar_name,
+    scales = "free_y"
+  )
+```
+
+
+* We can now see how these are genetic correlated i.e. the bug and covariate it is associated with
+
+```{r}
+# Combine the observational and PRS estimates for plotting
+plot_data <- obs_prs_cor_filt %>%
+  select(term, mt, estimate_obs, std.error_obs, estimate_prs, std.error_prs) %>%
+  pivot_longer(cols = c(estimate_obs, estimate_prs),
+               names_to = "type",
+               values_to = "estimate") %>%
+  mutate(std.error = ifelse(type == "estimate_obs", std.error_obs, std.error_prs),
+         type = ifelse(type == "estimate_obs", "Observational", "PRS"))
+
+# Create a separate data frame for the genetic correlation estimates
+rg_data <- obs_prs_cor_filt %>%
+  select(term, mt, rg, rg_se) %>%
+  rename(estimate = rg, std.error = rg_se) %>%
+  mutate(type = "Genetic Correlation")
+
+# Combine the data frames for plotting
+combined_data <- bind_rows(plot_data, rg_data)
+
+# Filter out mts that are not relevant for specific terms
+filtered_data <- combined_data %>%
+  group_by(term, type) %>%
+  filter(!is.na(estimate)) %>%
+  ungroup()
+
+# Reorder the type factor to ensure the correct order in the plot
+filtered_data$type <- factor(filtered_data$type, levels = c("Observational", "PRS", "Genetic Correlation"))
+
+# Create the forest plot with facets
+ggplot(filtered_data, aes(x = estimate, y = mt, color = type)) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(xmin = estimate - 1.96 * std.error,
+                    xmax = estimate + 1.96 * std.error),
+                width = 0.2, position = position_dodge(width = 0.5)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +  # Add dashed red line at x = 0
+  facet_grid(term ~ type, scales = "free", switch = "y") +
+  theme_minimal() +
+  labs(title = "Forest Plot of Observational, PRS Betas, and Genetic Correlation",
+       x = "Estimate",
+       y = "Microbiome Trait",
+       color = "Estimate Type") +
+  theme(legend.position = "bottom",
+        strip.text.y = element_text(angle = 0),  # Adjust angle for term labels
+        panel.grid.minor = element_blank())  # Remove minor grid lines
+```
+
+* Also look at adjusted R2, does this make a difference?
+
+```{r}
+#First extract the bug names by removing any part of the string after "_res_" in the trait column 
+h2out[["dircons"]] <- h2out[["dircons"]] %>%
+  mutate(bug = gsub("_res_.*", "", trait))
+
+#Plot estimates from h2out[["dircons"]] so we can see the adjusted and unadjusted h2 estimates, if ends with 5e.08, these are the adjusted phenotypes
+h2out[["dircons"]] %>%
+  ggplot(aes(x = h2, y = bug, color = ifelse(grepl("5e.08", trait), "Adjusted", "Unadjusted"))) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(aes(xmin = h2 - 1.96 * se, xmax = h2 + 1.96 * se), position = position_dodge(width = 0.5)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(title = "Heritability Estimates of Microbiome Traits Before and After Adjustment for Covariate PRS",
+       x = "Heritability Estimate",
+       y = "Microbiome Trait",
+       color = "Adjustment Type") +
+  theme(legend.position = "bottom")
+```
+
+* We see no difference in the h2 estimates, this could be due to power
+
+## Comparison of GWAS beta coefficents
+
+```{r}
+### Now we can see how the beta coefficients are correlated
+load(file.path(data.path, "data_out/filtered_bug_sumstats_05.1.RData"))
+
+#First filter to those traits in "obs_prs_cor_filt"
+
+#
+lm_out <- c()
+for(covar in names(merged_gwasbetas)){
+  for(bug in names(merged_gwasbetas[[covar]])){
+out <- lm(frequentist_add_beta_1 ~ beta, data = merged_gwasbetas[[covar]][[bug]]) %>% summary() %>% tidy() %>% filter(term == "beta")
+
+out <- cbind(out, covar, bug)
+lm_out <- rbind(lm_out, out)
+  }}
+
+
+sig_corbetas <- filter(lm_out, p.value < 0.05/10)
+
+sig_corbetas %>%
+  kbl() %>%
+  kable_styling()
+
+# Now plot
+plot <- list()
+
+for(i in 1:nrow(sig_corbetas)){
+bug <- sig_corbetas[i,"bug"]
+covar <- sig_corbetas[i,"covar"]
+plot[[i]] <- ggplot(merged_gwasbetas[[covar]][[bug]], aes(beta, frequentist_add_beta_1)) +
+      geom_point() +
+      geom_errorbar(aes(ymax = frequentist_add_beta_1 + 1.96*frequentist_add_se_1, ymin = frequentist_add_beta_1 - 1.96*frequentist_add_se_1)) +
+      geom_errorbar(aes(xmax = beta + 1.96*SE, xmin = beta - 1.96*SE)) +
+      geom_smooth(method="lm") +
+labs(title = paste0("Beta Coefficent Correlation between ", bug, " and ", covar),
+     x = "Beta coefficents from covariate GWAS",
+     y = "Beta coefficients from bug GWAS for covariate SNPs") #+
+#geom_abline(intercept=0, slope=1)
+}
+
+plot
+```
+
+
+* We can see that there is a significant correlation between the beta coefficents of the covariate and the bug, this suggests that the GWAS bug may be capturing the covariate leading to bias MR estimation
