@@ -130,8 +130,8 @@ data4prs[["phenos2use"]] <- filter(data4prs$matchedvars, vartype == 3 & !prs %in
 data4prs[["r2ofcovars"]] <- regout_covarprs_cont
 
 #Combine the PRS name with output
-regout_covarprs_cont <- cbind(regout_covarprs_cont, data4reg[data4reg$pheno_vartype == "cont", "prs"])
-regout_covarprs_cont_scale <- cbind(regout_covarprs_cont_scale, data4reg[data4reg$pheno_vartype == "cont", "prs"])
+#regout_covarprs_cont <- cbind(regout_covarprs_cont, data4reg[data4reg$pheno_vartype == "cont", "prs"])
+#regout_covarprs_cont_scale <- cbind(regout_covarprs_cont_scale, data4reg[data4reg$pheno_vartype == "cont", "prs"])
 
 #Now we can save our new data object
 save(data4prs, file = file.path(data.path, "data_out/fgfpdata4prs.RData"))
@@ -181,7 +181,7 @@ for(mt in RNTs){
   }
 }
   
-#We can not save our output
+#We can now save our output
 regout_prsRNTs <- list(regout_RNTs_univar = regout_RNTs_univar,
                        regout_RNTs_multivar = regout_RNTs_multivar)
 

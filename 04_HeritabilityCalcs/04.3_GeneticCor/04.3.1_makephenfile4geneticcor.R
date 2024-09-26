@@ -32,11 +32,11 @@ load(file = file.path(data.path, "data_out/data_ConsistentAssoc03.2.RData"))
 ############################################################################
 
 #Extract vector of the traits so that phenotypes are in the correct order for .phen GREML file
-phenovector <- lapply(1:nrow(obsest_prsest), function(i) obsest_prsest[i, c("term", "mt")]) %>% unlist() %>% unname()
+phenovector <- lapply(1:nrow(candidate_bugs), function(i) candidate_bugs[i, c("term", "mt")]) %>% unlist() %>% unname()
 
 #First lets make a df with all our variables of interest, this will be our cont PRSs and MTs
-phenos4cor <- merge(data4prs$pheno_covariate_prs[,c(unique(obsest_prsest$term), "fgfp_id", "IID")],
-                    dplyr::select(data4prs$gwasedmts, linker, unique(obsest_prsest$mt)),
+phenos4cor <- merge(data4prs$pheno_covariate_prs[,c(unique(candidate_bugs$term), "fgfp_id", "IID")],
+                    dplyr::select(data4prs$gwasedmts, linker, unique(candidate_bugs$mt)),
                     by.x = "fgfp_id",
                     by.y = "linker",
                     all = T) %>% 
@@ -46,7 +46,7 @@ phenos4cor <- merge(data4prs$pheno_covariate_prs[,c(unique(obsest_prsest$term), 
   distinct()
 
 #Lets scale our pheno variables to see if aids for convergence of GREML
-ncols <- length(unique(obsest_prsest$term))+1
+ncols <- length(unique(candidate_bugs$term))+1
 phenos4cor[,2:ncols] <- scale(phenos4cor[,2:ncols])
 
 #Now merge to make our file, must merge on both ids as some repeated measures in genetic data

@@ -36,8 +36,7 @@ plinkbgen_linker <- read.table(file = file.path(data.path, "greml/mapping_files/
 ############################################################
 
 # Edit our "data4prs[["matchedvars"]]" slightly to remove PRSs we are no longer interested in
-data4reg <- data4prs[["matchedvars"]] %>% 
-  dplyr::filter(!prs %in% c("stool_freq.Pt_5e.08", "creatinine3.Pt_5e.08"))
+data4reg <- data4prs[["matchedvars"]]
 
 data4prs$gwasedmts <- as.data.frame(data4prs$gwasedmts)
 phenos4greml_dircons <- data4prs$gwasedmts[,c("linker", unique(obs_prs_cor_filt$mt))]

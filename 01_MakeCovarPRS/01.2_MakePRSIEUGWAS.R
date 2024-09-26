@@ -110,3 +110,28 @@ write.table(snps_df[[trait]], file = outputfile, quote = F, row.names = F)
 
 
 
+
+
+################# Add in yengo_bmi snps to see if this improves R2 instead of GWAS on IEUGWAS
+yengo_bmi <- read.table(file.path(data.path, "yengo_BMI_656.txt"), header = T)
+yengo_bmi <- yengo_bmi %>% select(SNP, Tested_Allele, Other_Allele, Freq_Tested_Allele_in_HRS, BETA, SE, P)
+colnames(yengo_bmi) <- c("rsid", "eff.allele", "Oth_al", "EAF", "beta", "SE", "pval")
+
+merg_yengo <- merge(yengo_bmi,
+                               merged[c("V1", "rsid")], by = "rsid", all.x = T) %>% 
+  rename(fgfp_linker = V1)
+
+#Now save this output so can make PRS
+snps_df[["yengo_bmi"]] <- merg_yengo
+save(snps_df, file = file.path(data.path, "phenosumstats/filtered_sumstats_list.RData"))
+
+name <-  clean_directory_name("yengo_bmi")
+outputdir <- file.path(data.path, "phenosumstats",  name)
+dir.create(outputdir)
+outputfile <- file.path(outputdir, paste0(name, "_processedgwas.tsv"))
+write.table(snps_df[[name]], file = outputfile, quote = F, row.names = F)
+
+#Also write out a file with just the snps we are interested in for FGFP
+outputfile_snps <- file.path(outputdir, paste0(name, "_snps.txt"))
+write.table(snps_df[[name]]["fgfp_linker"], file = outputfile_snps, col.names=F, row.names=F, quote=F)
+
