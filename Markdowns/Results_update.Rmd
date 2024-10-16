@@ -1,14 +1,33 @@
 ---
-title: "Results_Updated"
+title: "Host Genome, Microbiome, Covariates"
 author: "Alec McKinlay"
-date: "2024-09-24"
-output: html_document
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    theme: journal
+    toc: yes
+    toc_float:
+      collapsed: true
 ---
+
+
+<style>
+  figure {
+    text-align: center;
+    margin-bottom: 20px; 
+  }
+  figcaption {
+    font-style: italic;
+    font-size: 0.9em;
+    color: #555;
+  }
+</style>
+
 
 ```{r, echo = FALSE, message=FALSE, warning=FALSE}
 
 #Set options for the fig sides
-knitr::opts_chunk$set(fig.width=18, fig.height=14, echo = F, message=F, warning=F)
+knitr::opts_chunk$set(echo = F, message=F, warning=F)
 
 #Set up and read in files
 #setwd to 05_Markdowns folder
@@ -56,6 +75,9 @@ genetic_cor <- read.table(file.path(data.path, "greml/greml_out/h2out_cor_dircon
 obs_prs_cor_filt <- read.table(file = file.path(data.path, "greml/greml_out/h2out_cor_dircons/clean_out_withobsprs.txt"), header = T, sep = "\t")
 
 
+### Load in beta coefficents from the two GWAS
+load(file.path(data.path, "data_out/filtered_bug_sumstats_05.1.RData"))
+
 
 #Now load in the heritability adjustment results
 h2out <- list()
@@ -63,22 +85,92 @@ for(i in c("dircons", "h2bugs")){
   h2out[[i]] <- read.table(file.path(data.path, paste0("greml/greml_out/h2_out/", i, "/cleanh2est.txt")), header = T, sep = "\t")
 }
 
+
+#Figs
+MR_assumptions <- file.path(data.path, "markdowns/figs/MR_assump.png")
+h2_confound <- file.path(data.path, "markdowns/figs/h2_confound.png")
 fallonyjpeg <- file.path(data.path, "markdowns/figs/fallonyfig.jpeg")
+manplot1 <- file.path(data.path, "data_out/manhattan/manhattan_fgfp/yengo_bmi_G_unclassified_P_Firmicutes_RNT_manhattan_plot2.png")
+
+manplot2 <- file.path(data.path, "data_out/manhattan/manhattan_fgfp/Standing_height_F_Ruminococcaceae_RNT_manhattan_plot2.png")
+
+manplot3 <- file.path(data.path, "data_out/manhattan/manhattan_fgfp/Alanine_aminotransferase_levels_G_Roseburia_RNT_manhattan_plot2.png")
+
+#Map
+naming_map <- obsest_prsest %>% select(term, covar_name, term_prs, prs) %>% unique()
 
 ```
 
+# Introduction
 
-# Need to add in shortoverview here along with heritable confounder DAGs
+## Replication crisis in Gut Microbiome GWAS's
 
-### Decide on covariates
+Previous chapters aimed to quantify associations between the host genome and human gut microbiome both from published literature and through generation of novel polygenic scores (PRSs) in FGFP, with limited success. Published literature suggest most signals between the genome and derived Gut Microbiome Traits (GMTs) are unable to replicate across study (even as power for these studies increase), whilst polygenic scores generated using the GMT as the primary phenotype show no evidence of an association with the trait the PRS has been trained to proxy.
 
-Fallony et al studies which covariates in FGFP explained the most variation in beta diversity. We have taken the top covariates forward to generate PRSs for
+Despite these inconsistencies, what is clear is that the GMTs derived in various cohorts show evidence for both SNP-based and twin-based heritabiliy. One hypothesis explaining these patterns is that the GWAS signals and observed heritability may be inflated by associations between the gut microbiome and other covariables of the microbiome (e.g. BMI / diet / various metabolite levels), which are themselves heritable. This has been demonstarted in the literature by the one association replicated across many cohorts between the LCT region and relative abundance of the Bifidobacterium genus, as association dependent on milk consumption of the host. Here it is shown that rather than a direct mechanism of associaiton between the genome and bacteria, we see a complex interaction arise between the host genome, diet and gut microbiome.
 
-##### Fallony covariates
+If all GMT GWAS signals are dependent on complex interactions / indirect mechanisms with other covariables associated to the host, the use of established epidemiological causal inference methods (i.e. Mendelian randomisation) using GMTs as the exposure will potentially be biased through heritable confounding. This could could be one explanation for the number of microbiome MR studies reporting "signal" for a huge number of traits
 
-![Fallony Figure](`r fallonyjpeg`)
+## Mendelian randomisation
 
-# Lets chose our covariates to make PRS on
+Mendelian randomisation (MR) is a method that uses genetic variants as instrumental variables to estimate the causal effect of an exposure on an outcome. The method is based on the principle that genetic variants are randomly assigned at conception and are therefore not subject to confounding or reverse causation. This allows for the estimation of causal effects in observational data, where confounding and reverse causation are common. For an MR study to be unbiased, the genetic variants used as instruments must satisfy three key assumptions: 
+
+1. The genetic variants are associated with the exposure of interest. 
+2. The genetic variants are not associated with any confounders of the exposure-outcome relationship. 
+3. The genetic variants are only associated with the outcome through the exposure of interest.
+
+<figure>
+  <h4><strong>Figure 1:</strong> Diagramatic overview of MR assumptions</h4>
+  <img src="`r MR_assumptions`" width="500" alt="Mendelian randomisation assumptions" />
+  <figcaption>For an MR estimand to be valid its three core assumptions should hold, as detailed above.</figcaption>
+</figure>
+
+
+## Heritable Confounding
+
+The complex polygenic nature of traits, leads to associations discovered through GWASs that are likely to arise due to complex phenotypic interaction networks. This mediation is of particular concern in MR if phenotypic pathways open up between the confounder and outcome of interest, independent of the specified primary exposure (in our case GMTs). The figure below highlights some of these potential biases
+
+<figure>
+  <h4><strong>Figure 2:</strong> Potential bias through heritable confounding </h4>
+  <img src="`r h2_confound`" width="500" alt="Heritable confounding bias" />
+  <figcaption>The figure depicts two mechanisms of bias through heritable confounding. G represents genetic variation, X represents our microbiome traits, C are our covariables of the microbiome and Y is the outcome of interest. The left shows situation where some of our instruments are biased through horizontal pleiotropy, whereas the diagram on the right shows a situation where all our instruments are biased and we have complete mispecification of primary phenotype. </figcaption>
+</figure>
+
+
+## Overview
+
+In attempt to understand the heritablity of the microbiome and the potential for heritable confounding bias in downstream MR analyses, we have ran a series of analyses in the FGFP cohort, using genetic, microbiome and phenome data measured on the individuals. 
+
+# Methods
+
+Our methods are as follows:
+
+1. **Selection of Microbiome Covariables**: Using previous results from a previous study we will first identify those phenotypes observed to explain the most variation in microbiome diversity between individuals. 
+2. **PRS Generation of covariables**: Suitable candidates for PRS generation will be selected from our covariables of interested by generating PRSs for each of the covariable (where an appropriate GWAS is available) through genome-wide significant SNPs reported on the trait of interest. Those PRSs that explain a significant proportion of the variance in the covariable will be taken forward for further analysis. 
+3. **Observational Analysis**: We will then regress the covariable PRSs on the microbiome traits to identify any observational associations between the covariables and the microbiome traits. This will give us an idea of the extent to which the covariables are associated with the microbiome traits, and suitable candidates for relationships we believe to be driving microbiome heritablity estimates. 
+4. **PRS Regression**: We will then regress the covariable PRSs on the microbiome traits to identify consistent betas between the observational and genetic regression analyses. 
+5. **Genetic Correlation**: We will use the GREML to estimate the genetic correlation between the microbiome traits and the covariates of interest, for those relationships with suggestive observational results (beta p_val < 0.05) and directionality agreement with the PRS estimation.
+6. **Recalculation of Microbiome heritable estimates, adjusting for covariate PRSs**: For our candidate relationships, identified from the previous steps - we can now recalculate the heritability of these GMTs adjusting for the PRS downstream analyses has shown evidence of a strong observational and genetic overlap - to identify if this is driving the heritablity observed from the GMT.
+7. **Investigation into Microbiome Summary Staistics**: For our candidate relationships, identified from the previous steps - we can now investigate the microbiome summary statistics to see if the SNPs identified in the covariate PRSs are showing up in the microbiome summary statistics, and if these beta coefficents are correlated.
+
+
+# Results
+
+
+
+## Select Covariates of interest
+
+A recent study (Falony et al) used FGFP data to discern which covariables were driving variation in beta diversity. The figure below shows the covariables of the microbiome that were identified as driving variation in beta diversity.
+
+<figure>
+  <h4><strong>Figure 3:</strong> Covariables of the Microbiome</h4>
+  <img src="`r fallonyjpeg`" width="500" alt="Covariables of the Microbiome" />
+  <figcaption>The figure is taken from the falony et al study, which used FGFP data to discern which covariables were driving variation in beta diversity, these are our candidate covariates for downstream analysis</figcaption>
+</figure>
+
+
+To decide which covariables we were interest in taking forward for our analysis, we first decided if there was an appropriate GWAS availble for the covariable of interest using OpenGWAS and the GWASCatalog. We then generated PRSs for each of the covariables (where an appropriate GWAS was available) through genome-wide significant SNPs reported on the trait of interest. Those PRSs that explained a significant proportion of the variance in the covariable were taken forward as our candidate covariables. The following table shows those covariables that were chosen, along with variance explained in the trait observationally by the polygenic score, and the pvalue of the beta coeffiencent (from the regression of covariable PRS onto the covariable in FGFP).
+
 ```{r}
 ## Display the traits we are actually working with
 
@@ -110,20 +202,17 @@ colnames(viz_df) <- c("Covariate", "Partial R2", "Beta_pval")
 
 ```
 
-* The follow covariates were taken forward to regress on microbiome traits as suggested sufficent variance explained in the covariate by its PRS
-
 ```{r}
 viz_df %>%
   mutate(`Partial R2` = scales::percent(`Partial R2`, accuracy = 0.01),
          Beta_pval = format(Beta_pval, scientific = TRUE, digits = 2)) %>%
-  kbl() %>%
+  kbl(caption = "Table 1: Summary of covariables chosen for downstream analyses, along with variance explained by the trained PRS using beta weights from an independent GWAS") %>%
   kable_styling()
 ```
 
-## Regression of PRS on microbiome traits
+### Selection of Microbiome traits in FGFP
 
-* For this analysis, we will be using RNTs to capture microbiome variation as were GWAS'd in the FGFP paper by Hughes et al.
-* Lets have an overview of these traits
+The gut microbiome was sampled and measured for a subset of the FGFP cohort using 16S rRNA sequencing of stool samples. These were then processed into both continuous and binary traits suitable for regression-based analysis as detailed in the Hughes et al FGFP GWAS. For our analysis here, we have focused on the rank normal transformed (RNT) microbiome traits, as these were suggested to be the most appropriate for normality correction. An overview of these traits are highlighted below
 
 ```{r}
 #Work out how many of each category there are of the microbiome traits
@@ -143,42 +232,45 @@ ggplot(taxa_group, aes(x = group)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-* We are therefore looking at a total of `r nrow(taxa_group)` microbiome traits and `r nrow(viz_df)` covariates.
+### Number of traits
+We are therefore looking at a total of `r nrow(taxa_group)` microbiome traits and `r nrow(viz_df)` covariates, meaning a total of `r nrow(taxa_group) * nrow(viz_df)` relationships will be explored in this pipeline
 
-## Observational Analysis of PRS on Microbiome Traits
+## Observational Analysis in FGFP
 
-* First we can look at a very busy forest plot of all the regressions run
-* Then we can look at a heatmap and bar chart showing how much observational signal we observe
-```{r}
+First we can run the observational analysis of all these relationships, regressing our covariate onto the RNT microbiome traits in FGFP. 
+
+Due to the large number of relationships considered, forest plots were far too busy to display data. Instead these relationships can be visualised through heat maps, where the covariables are plotted on the x axis and microbiome traits are plotted on the y axis
+
+```{r, fig.width=14, fig.height=14}
 #Make factor so levels don't change
 obs_est$group <- factor(obs_est$group, levels = unique(obs_est$group))
 
-ggforestplot::forestplot(
-  df = obs_est,
-  name = mt,
-  estimate = estimate,
-  se = std.error,
-  pvalue = p.value,
-  colour = term,
-  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase of the covariate in FGFP",
-  title = "Regression coefficents from Observational analyses of Covariate regressed on RNT Microbial Traits in FGFP") +
-  facet_wrap(
-    facets = ~group,
-    ncol = 3,  # Number of columns
-    nrow = 2,  # Number of rows
-    scales = "free_y",
-  )
+#ggforestplot::forestplot(
+#  df = obs_est,
+#  name = mt,
+#  estimate = estimate,
+#  se = std.error,
+#  pvalue = p.value,
+#  colour = term,
+#  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase of the covariate #in FGFP",
+#  title = "Regression coefficents from Observational analyses of Covariate regressed on RNT #Microbial Traits in FGFP") +
+#  facet_wrap(
+#    facets = ~group,
+#    ncol = 3,  # Number of columns
+#    nrow = 2,  # Number of rows
+#    scales = "free_y",
+#  )
 
 ### Heat Map
 
 # Assuming obs_est is your dataframe and has columns: term, mt, p.value, group
 obs_est %>%
   # Create a binary column for significance: 1 if p < 0.05, else 0
-  mutate(sig = ifelse(p.value < 0.05, 1, 0)) %>%
+  mutate(sig = ifelse(p.value < 0.05 & estimate > 0, 1, ifelse(p.value < 0.05 & estimate < 0, 2, 0))) %>%
   
   # Reorder the x-axis based on the number of significant results (descending order)
   group_by(covar_name) %>%
-  mutate(sig_count = sum(sig)) %>%
+  mutate(sig_count = sum(p.value < 0.05)) %>%
   ungroup() %>%
   mutate(covar_name = reorder(covar_name, -sig_count)) %>%  # Reorder based on significant results
   
@@ -187,18 +279,18 @@ obs_est %>%
   geom_tile(color = "grey80", size = 0.5) +  # Add borders to tiles
   
   # Use manual color scale for binary significance: white for 0, blue for 1
-  scale_fill_manual(values = c("0" = "white", "1" = "blue"),
+  scale_fill_manual(values = c("0" = "white", "1" = "darkgreen", "2" = "purple"),
                     name = "Significance",
-                    labels = c("0" = "No Observational Signal",
-                               "1" = "Observational Estimate p < 0.05")) +
+                    labels = c("0" = "No Observational Signal (p > 0.05)",
+                               "1" = "Positive Observational Estimate (p < 0.05)",
+                               "2" = "Negative Observational Estimate (p < 0.05)")) +
   
   # Facet by group on the y-axis to add headers
   facet_grid(group ~ ., scales = "free", space = "free") +  # Grouped by 'group' column, free scaling
   
   # Labels and formatting
   labs(title = "Observational associations between microbiome traits and covariates of interest, indicating where there is evidence of singal",
-       subtitle = "Blue indicates p < 0.05",
-       x = "Observational covariate",
+       x = "Covariate",
        y = "Microbiome Traits") +
   
   # Theme for improved aesthetics
@@ -213,7 +305,13 @@ obs_est %>%
     panel.grid = element_blank()  # Remove gridlines
   )
 
+```
 
+The plot has been ordered from left to right with the covariable which shows the highest number of signals with the microbiome traits. 
+
+We can also visualise the amount of signal through a bar chart. This bar chart shows the number of observational regression with evidence of signal (p < 0.05) against those with no signal (p > 0.05) for each covariate - GMT relationship.
+
+```{r, fig.width=14, fig.height=14}
 # Bar chart
 # Assuming obs_est has columns: covar_name, mt, p.value, group
 obs_est %>%
@@ -241,7 +339,7 @@ obs_est %>%
                     name = "Association") +
   
   # Add labels and titles
-  labs(title = "Number of associations with pval > 0.05 from observational regressions",
+  labs(title = "Count of suggestive signal from observational regressions",
        x = "Covariate",
        y = "Count of Outcomes") +
   
@@ -256,12 +354,14 @@ obs_est %>%
   )
 ```
 
+## Covariate PRS regression on GMTs
 
-# Do our PRS show consistnent associations with the observational results?
+For those relationships with signal, we can now run the PRS regression on the GMTs to identify consistent betas between the observational and genetic regression analyses. This can also be visualised in a heat map, where we will colour in the tiles based on the agreement between the observational and genetic regression analyses. Red tile indicates disagreement between the observational and PRS regression, green indicates agreeement, and white indicates no evidence of an observational assocaition
 
-```{r}
+```{r, fig.width=14, fig.height=14}
 # Lets revisit our heatmap, but this time with observational agreeement
-
+#Make factor so levels don't change
+obsest_prsest$group <- factor(obsest_prsest$group, levels = levels(obs_est$group))
 
 obsest_prsest %>%
   # Update the sig column with descriptive labels
@@ -279,7 +379,7 @@ obsest_prsest %>%
   geom_tile(color = "grey80", size = 0.5) +  # Add borders to tiles
   
   # Custom color scheme: white for No Signal, red for Disagreement, blue for Agreement
-  scale_fill_manual(values = c("No_Obs_Signal" = "white", "Beta_Disagree" = "red", "Beta_Agree" = "blue"),
+  scale_fill_manual(values = c("No_Obs_Signal" = "white", "Beta_Disagree" = "red", "Beta_Agree" = "green"),
                     name = "Significance",
                     labels = c("No_Obs_Signal" = "No Observational Signal",
                                "Beta_Disagree" = "Beta Disagree",
@@ -306,10 +406,12 @@ obsest_prsest %>%
     panel.grid = element_blank()  # Remove gridlines
   )
 
+```
+
+We can again visualise this as a bar chart to get a better idea of the number of relationships where the observational and PRS regression agree or disagree.
 
 
-
-
+```{r}
 ## Lets also make a bar chart so we can see results of this more clearly
 obsest_prsest %>%
   # Create a binary variable for significance (1 = significant, 0 = not significant)
@@ -335,12 +437,12 @@ obsest_prsest %>%
   geom_bar(stat = "identity", position = "dodge", color = "black", size = 0.3) +  # Dodged bar chart
   
   # Define the color scale for agreement/disagreement bars
-  scale_fill_manual(values = c("Beta_Disagree" = "red", "Beta_Agree" = "blue"), 
+  scale_fill_manual(values = c("Beta_Disagree" = "red", "Beta_Agree" = "green"), 
                     labels = c("Beta Agree", "Beta Disagree"), 
                     name = "Association") +
   
   # Add labels and titles
-  labs(title = "Bar chart displaying the number of suggestive associations from observational regressions, coloured by agreement with PRS regressions",
+  labs(title = "Bar chart showing agreement vs disagreement in beta directionality between observational and PRS results",
        x = "Covariate",
        y = "Count of Outcomes") +
   
@@ -357,9 +459,13 @@ obsest_prsest %>%
 
 ```
 
-* Where do we have our strongest evidence of observational and PRS agreement i.e. the bug may just be capturing the phenotype
-* Lets chose our best candidate bugs where we believe it to be capturing a covariate
-```{r}
+### Selection of candidate covariate - GMT relationships
+
+Now we want to find those relationships where we have both observational and PRS agreement, and pvalue < 0.05 for both regression analysis. These will be our strongest candidate relationships to further investigate summary statistics of the GMTs and covariables of interest.
+
+We can visualise these forest plots below of our correlated phenotypes.
+
+```{r, fig.width=14, fig.height=14}
 # Make a forest plot of the candidiate_bugs
 #We can also look at those with sig observational results
 #First reshape the data
@@ -396,9 +502,13 @@ ggforestplot::forestplot(
 ```
 
 
-* We can now see how these are genetic correlated i.e. the bug and covariate it is associated with
+## Genetic Correlation
 
-```{r}
+For completeness we can also look at the genetic correlation between our candidate relationships using GREML. Again, we can filter to those relationships whereby the directionality of the genetic correlation agrees in the beta directionality of the observational and PRS regression.
+
+Many of the genetic correlations were unable to run for many of the GMTs as the analysis was too underpowered to detect anything. This is likely due to the small sample size of the FGFP cohort. 
+
+```{r, fig.width=14, fig.height=14}
 # Combine the observational and PRS estimates for plotting
 plot_data <- obs_prs_cor_filt %>%
   select(term, mt, estimate_obs, std.error_obs, estimate_prs, std.error_prs) %>%
@@ -444,7 +554,11 @@ ggplot(filtered_data, aes(x = estimate, y = mt, color = type)) +
         panel.grid.minor = element_blank())  # Remove minor grid lines
 ```
 
-* Also look at adjusted R2, does this make a difference?
+## Adjusted h2 of GMTs
+
+We not have a handful of relationships where the observational and PRS regression agree, and the genetic correlation is in the same direction as the beta coefficent. 
+
+Our first planned analysis is to recalculate the heritability of these GMTs adjusting for the PRS of the covariable shown to be correlated with the GMT of interest. This would show evidence of the heritablity of microbiome traits being predmonently driven by associations with the covariable.
 
 ```{r}
 #First extract the bug names by removing any part of the string after "_res_" in the trait column 
@@ -465,13 +579,20 @@ h2out[["dircons"]] %>%
   theme(legend.position = "bottom")
 ```
 
-* We see no difference in the h2 estimates, this could be due to power
+We can see no difference between the adjusted and unadjusted heritability estimates, power however is likely to be a huge limtitng factor.
 
-## Comparison of GWAS beta coefficents
+## Comparison of GMT and Covariable Summary statisitcs
+
+### GWAS beta agreement
+
+We can also further investigate the microbiome summary statistics to see if the SNPs identified in the covariate PRSs are showing up in the microbiome summary statistics, and if these beta coefficents are correlated. 
+
+First we can see if the beta coefficents of the covariate and the bug are correlated, by taking those SNPs used to generate the covariate instrument (p < 5e-8 in the covariate discovery GWAS) and regress them against the same SNP in the FGFP bug GWAS. If correlated, it would suggest that the bug GWAS may be capturing the covariate potential leading to bias downstream MR analysis.
+
+To illustrate this point we will select a few examples from our SNP-Covar relationships.
 
 ```{r}
-### Now we can see how the beta coefficients are correlated
-load(file.path(data.path, "data_out/filtered_bug_sumstats_05.1.RData"))
+
 
 #First filter to those traits in "obs_prs_cor_filt"
 
@@ -488,9 +609,9 @@ lm_out <- rbind(lm_out, out)
 
 sig_corbetas <- filter(lm_out, p.value < 0.05/10)
 
-sig_corbetas %>%
-  kbl() %>%
-  kable_styling()
+#sig_corbetas %>%
+#  kbl() %>%
+#  kable_styling()
 
 # Now plot
 plot <- list()
@@ -509,8 +630,89 @@ labs(title = paste0("Beta Coefficent Correlation between ", bug, " and ", covar)
 #geom_abline(intercept=0, slope=1)
 }
 
-plot
+#plot
 ```
 
 
-* We can see that there is a significant correlation between the beta coefficents of the covariate and the bug, this suggests that the GWAS bug may be capturing the covariate leading to bias MR estimation
+When we see a strong positive correlation in our PRS and Observational results, we can see that the beta coefficents from the two GWAS's are positively correlated (e.g. G_Aestuariispira and triglycerides) whereas a negative relationship we then see that the beta coefficents are negatively correlated (e.g. G_unclassified_O_Clostridiales and Uric acid)
+
+Below is the plots showing the correlation between beta coefficents of the bug and covariable
+
+```{r, fig.width=14, fig.height=8}
+plot[[1]] + plot[[6]]
+```
+
+
+### Microbiome GWAS signals
+
+We can also observe the microbiome summary statistics to see if the SNPs identified in the covariate PRSs are showing up in the microbiome summary statistics. This will be especially problematic if these covariate SNPs start to creep above the relaxed pvalue selection threshold (1e-5) in the microbiome GWAS as this is the current threshold used in the literature to select instruments for Mendelian radnomsiation analysis
+
+We can colour in SNPs which are shown to be associated with the covariate GWAS on the microbiome manhattan plot from FGFP. As an example we can use the FGFP GWAS for G_unclassified_P_Firmicutes which was able to find signal in this cohort at genome-wide significance level as observed in the manhattan plot. However, results outlined  BMI and this particular GMT as one of the relationships to covary with one another. If we colour in BMI snps (and those SNPs in LD with the BMI snps), we can see that the SNPs associated with BMI are showing up in the microbiome summary statistics:
+
+<figure>
+  <h4>Manhattan plot of G_unclassified_P_Firmicutes GWAS results, colouring in those SNPs associated (or in LD with those associated) with BMI</h4>
+  <img src="`r manplot1`" width="500" alt="manplot1" />
+  <figcaption></figcaption>
+</figure>
+
+
+We can also observe this with several other of our candidate relationship - whereby SNPs associated with the covariate begin to creep into the the PRS instrument for the bug if we relax the threshold
+
+<figure>
+  <h4><strong>Figure 1:</strong>Manhattan plot of F_Ruminococcaceae GWAS results, colouring in those SNPs associated (or in LD with those associated) with Height</h4>
+  <img src="`r manplot2`" width="500" alt="manplot3" />
+  <figcaption></figcaption>
+</figure>
+
+<figure>
+  <h4><strong>Figure 1:</strong>Manhattan plot of G_Roseburia GWAS results, colouring in those SNPs associated (or in LD with those associated) with AAT levels</h4>
+  <img src="`r manplot3`" width="500" alt="manplot3" />
+  <figcaption></figcaption>
+</figure>
+
+
+This is particularly problematic when lowering the pvalue threshold for selecting instruments for MR analysis, as the covariate SNPs are showing up in the microbiome summary statistics. This could lead to bias in the MR analysis, if the bug is not on the causal path from SNP -> covar -> outcome.
+
+
+```{r}
+#obs_prs_cor_betacor <- filtered_data %>% select(-std.error_obs, -std.error_prs)
+#
+#obs_prs_cor_betacor$mt <- gsub("Res", "", obs_prs_cor_betacor$mt)
+#
+#obs_prs_cor_betacor <- merge(obs_prs_cor_betacor, 
+#                             naming_map[,c("term", "covar_name")],
+#                             by = "term")
+#
+#obs_prs_cor_betacor <- obs_prs_cor_betacor %>% select(-term)
+#
+#obs_prs_cor_betacor <- merge(lm_out,
+#      naming_map[,c("prs", "covar_name")], 
+#      by.x = "covar", by.y = "prs") %>% 
+#  mutate(type = "BetaGWAS_Correlation") %>%
+#  rename(mt = bug) %>%
+#  select(mt, type, estimate, std.error, covar_name) %>%
+#  rbind(obs_prs_cor_betacor)
+#
+##Remove diversity metrics from the plot
+#sig_corbetas_nodiv <- sig_corbetas[!grepl("Div_", sig_corbetas$bug),]
+#
+#obs_prs_cor_betacor_filt <- obs_prs_cor_betacor %>% filter(mt %in% sig_corbetas_nodiv$bug)
+#
+#obs_prs_cor_betacor_filt <- obs_prs_cor_betacor_filt[1:3,]
+#
+##Forest plot for the observational and PRS estimate
+#ggforestplot::forestplot(
+#  df = obs_prs_cor_betacor_filt,
+#  name = mt,
+#  estimate = estimate,
+#  se = std.error,
+#  colour = type,
+#  xlab = "hold",
+#  title = "hold") +
+#  ggforce::facet_col(
+#    facets = ~covar_name,
+#    scales = "free_y"
+#  )
+#
+#
+```
