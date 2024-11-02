@@ -39,7 +39,7 @@ plinkbgen_linker <- read.table(file = file.path(data.path, "greml/mapping_files/
 data4reg <- data4prs[["matchedvars"]]
 
 data4prs$gwasedmts <- as.data.frame(data4prs$gwasedmts)
-phenos4greml_dircons <- data4prs$gwasedmts[,c("linker", unique(obs_prs_cor_filt$mt))]
+phenos4greml_dircons <- data4prs$gwasedmts[,c("linker", unique(candidate_bugs$mt))]
 
 #Now merge with bgen linker so can format a phenotype file for GREML
 phenos4greml_dircons <- merge(plinkbgen_linker, phenos4greml_dircons, , by.x = "fgfp_id", by.y = "linker", all.x = T)
@@ -47,8 +47,8 @@ phenos4greml_dircons <- merge(plinkbgen_linker, phenos4greml_dircons, , by.x = "
 
 #Now residualise the traits
 #Create a df for this regression
-residual_df_dircons <- merge(data4prs$gwasedmts %>% dplyr::select(linker, all_of(obs_prs_cor_filt$mt)), 
-                             data4prs$pheno_covariate_prs %>% dplyr::select(fgfp_id, IID, all_of(obs_prs_cor_filt$term_prs)),
+residual_df_dircons <- merge(data4prs$gwasedmts %>% dplyr::select(linker, all_of(candidate_bugs$mt)), 
+                             data4prs$pheno_covariate_prs %>% dplyr::select(fgfp_id, IID, all_of(candidate_bugs$term_prs)),
                              by.x = "linker",
                              by.y = "fgfp_id",
                              all.y = T) 
@@ -66,10 +66,10 @@ residual_df_dircons <- dplyr::filter(residual_df_dircons,
 #Now extract the residuals from the regression model
 #First we can do this for 1:1
 
-for (i in 1:nrow(obs_prs_cor_filt)){
+for (i in 1:nrow(candidate_bugs)){
   
-  bug <- obs_prs_cor_filt$mt[i]
-  prs <- obs_prs_cor_filt$term_prs[i]
+  bug <- candidate_bugs$mt[i]
+  prs <- candidate_bugs$term_prs[i]
   
   residual_df_dircons[, paste0(bug, "_res_", prs)] <- lm(reformulate(prs, response = bug),
                                                          data = residual_df_dircons, na.action = na.exclude) %>% residuals()
@@ -78,12 +78,12 @@ for (i in 1:nrow(obs_prs_cor_filt)){
 
 #Then we can also extract the residuals for the multiple pheno residualisation of the microbial trait
 
-multiplesignal_mt <- obs_prs_cor_filt$mt[duplicated(obs_prs_cor_filt$mt)]
+multiplesignal_mt <- candidate_bugs$mt[duplicated(candidate_bugs$mt)]
 
 for (i in 1:length(multiplesignal_mt)){
   
   bug <- multiplesignal_mt[i]
-  prs <- obs_prs_cor_filt[obs_prs_cor_filt$mt == bug, "term_prs"] 
+  prs <- candidate_bugs[candidate_bugs$mt == bug, "term_prs"] 
   prs_name <- paste(prs, collapse = "__")
   
   residual_df_dircons[, paste0(bug, "_res_", prs_name)] <- lm(reformulate(prs, response = bug),
@@ -93,7 +93,7 @@ for (i in 1:length(multiplesignal_mt)){
 
 
 phenos4greml_dircons <- merge(phenos4greml_dircons[,1:5], 
-                              residual_df_dircons[,!colnames(residual_df_dircons) %in% unique(obs_prs_cor_filt$term_prs)],
+                              residual_df_dircons[,!colnames(residual_df_dircons) %in% unique(candidate_bugs$term_prs)],
                               by.x = c("fgfp_id", "bgenid1"),
                               by.y = c("linker", "IID"),
                               all = T)
@@ -115,6 +115,18 @@ writeLines(colnames(phenfile2)[-c(1:2)], file.path(data.path, "greml/phenos4grem
 
 #Also save as an R object as may be useful later
 save(phenos4greml_dircons, file = file.path(data.path, "greml/phenos4greml/dircons/data_phenosdircons_04.2.1.RData"))
+
+
+
+
+#We are no longer using this code below
+
+
+
+
+
+
+
 
 
 
