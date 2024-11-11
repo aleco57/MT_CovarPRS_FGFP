@@ -442,7 +442,7 @@ obsest_prsest %>%
                     name = "Association") +
   
   # Add labels and titles
-  labs(title = "Bar chart showing agreement vs disagreement in beta directionality between observational and PRS results",
+  labs(title = "Bar chart plotting agreement vs disagreement of beta directionality",
        x = "Covariate",
        y = "Count of Outcomes") +
   
@@ -494,11 +494,13 @@ ggforestplot::forestplot(
   pvalue = p.value,
   colour = type,
   xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading of the covariate / the measure covariate",
-  title = "Regression coefficents from Observational analyses of Covariate regressed on RNT microbial Traits in FGFP") +
+  title = "Selected Covariate-Microbiome relationships with strongest evidence of observational and PRS signal") +
   ggforce::facet_col(
     facets = ~covar_name,
     scales = "free_y"
   )
+
+
 ```
 
 
@@ -593,44 +595,161 @@ To illustrate this point we will select a few examples from our SNP-Covar relati
 
 ```{r}
 
+file = file.path(data.path, "data_out/BetaCor_05.3.RData")
 
-#First filter to those traits in "obs_prs_cor_filt"
+beta_cor <- mutate(lm_out,
+                   mt = paste0(bug, "Res")) %>%
+  merge(unique(obsest_prsest_long[,c("term", "mt", "group", "prs", "covar_name")]), 
+        by.x = c("covar", "mt") ,
+        by.y = c("prs", "mt")) %>% 
+  select(-term.x) %>%
+  rename(term = term.y) %>%
+  mutate(type = "BetaGWAS_Cor")
+        
+#Plot with PRS and Observational
+obsest_prest_betacor_long <- bind_rows(obsest_prsest_long, beta_cor)
 
-#
-lm_out <- c()
-for(covar in names(merged_gwasbetas)){
-  for(bug in names(merged_gwasbetas[[covar]])){
-out <- lm(frequentist_add_beta_1 ~ beta, data = merged_gwasbetas[[covar]][[bug]]) %>% summary() %>% tidy() %>% filter(term == "beta")
 
-out <- cbind(out, covar, bug)
-lm_out <- rbind(lm_out, out)
-  }}
+#Forest plot for the observational and PRS estimate
+ggforestplot::forestplot(
+  df = obsest_prest_betacor_long,
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  colour = type,
+  xlab = "Beta from Observation / PRS / Beta_GWAS regressions",
+  title = "Candidate Covariate-Microbiome relationships") +
+  ggforce::facet_col(
+    facets = ~covar_name,
+    scales = "free_y"
+  )
 
 
-sig_corbetas <- filter(lm_out, p.value < 0.05/10)
+#Exemplar relationships to highlight
+#G_Aestuariispira and triglycerides
+#G_unclassified_O_Clostridiales and Uric acid
 
-#sig_corbetas %>%
-#  kbl() %>%
-#  kable_styling()
+# Fit linear model and extract p-value
+model <- lm(beta.outcome ~ beta.exposure, data = harm_data_all[["triglycerides"]][["G_Aestuariispira_RNT"]])
+p_value <- summary(model)$coefficients[2, 4] %>% format(scientific = TRUE, digits = 3)
 
-# Now plot
-plot <- list()
+scatter1 <- ggplot(harm_data_all[["triglycerides"]][["G_Aestuariispira_RNT"]], aes(beta.exposure, beta.outcome)) +
+    geom_errorbar(aes(ymax = beta.outcome + 1.96 * se.outcome, ymin = beta.outcome - 1.96 * se.outcome), 
+                  width = 0, alpha = 0.5) +  # Semi-transparent error bars
+    geom_errorbar(aes(xmax = beta.exposure + 1.96 * se.exposure, xmin = beta.exposure - 1.96 * se.exposure), 
+                  width = 0, alpha = 0.5) +
+    geom_point(shape = 21, color = "black", fill = "steelblue", size = 3) +  # Points with black outline
+    geom_smooth(method = "lm", color = "firebrick", linetype = "solid", size = 1) +
+    labs(title = "Beta Coefficient Correlation for Triglyceride SNPs\nbetween G_Aestuariispira GWAS and Triglycerides GWAS",
+         x = "Triglyceride SNP Betas from G_Aestuariispira GWAS",
+         y = "Triglyceride SNP Betas from Triglycerides GWAS") +
+    # Annotate p-value on the plot
+    annotate("text", x = Inf, y = Inf, label = paste("Slope p-value:", p_value), 
+             hjust = 1.1, vjust = 1.1, size = 3, color = "black") +
+    theme_classic() +
+    theme(
+        plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        plot.margin = unit(c(1, 1, 1, 1), "lines")
+    )
 
-for(i in 1:nrow(sig_corbetas)){
-bug <- sig_corbetas[i,"bug"]
-covar <- sig_corbetas[i,"covar"]
-plot[[i]] <- ggplot(merged_gwasbetas[[covar]][[bug]], aes(beta, frequentist_add_beta_1)) +
+model <- lm(beta.outcome ~ beta.exposure, data = harm_data_all[["Serum_uric_acid_levels"]][["G_unclassified_O_Clostridiales_RNT"]])
+p_value <- summary(model)$coefficients[2, 4] %>% format(scientific = TRUE, digits = 3)
+
+scatter2 <- ggplot(harm_data_all[["Serum_uric_acid_levels"]][["G_unclassified_O_Clostridiales_RNT"]], aes(beta.exposure, beta.outcome)) +
+    geom_errorbar(aes(ymax = beta.outcome + 1.96 * se.outcome, ymin = beta.outcome - 1.96 * se.outcome), 
+                  width = 0, alpha = 0.5) +  # Semi-transparent error bars
+    geom_errorbar(aes(xmax = beta.exposure + 1.96 * se.exposure, xmin = beta.exposure - 1.96 * se.exposure), 
+                  width = 0, alpha = 0.5) +
+    geom_point(shape = 21, color = "black", fill = "steelblue", size = 3) +  # Points with black outline
+    geom_smooth(method = "lm", color = "firebrick", linetype = "solid", size = 1) +
+    labs(title = "Beta Coefficient Correlation for Uric Acid SNPs\nbetween G_unclassified_O_Clostridiales GWAS and Uric Acid GWAS",
+         x = "Uric Acid SNP Betas from G_unclassified_O_Clostridiales GWAS",
+         y = "Uric Acid SNP Betas from Uric Acid GWAS") +
+    # Annotate p-value on the plot
+    annotate("text", x = Inf, y = Inf, label = paste("Slope p-value:", p_value), 
+             hjust = 1.1, vjust = 1.1, size = 3, color = "black") +
+    theme_classic() +
+    theme(
+        plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+        axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        plot.margin = unit(c(1, 1, 1, 1), "lines")
+    )
+
+
+forestplot <- ggforestplot::forestplot(
+  df = filter(obsest_prsest_long, 
+              (mt == "G_Aestuariispira_RNTRes" & prs == "triglycerides") | 
+              (mt == "G_unclassified_O_Clostridiales_RNTRes" & prs == "Serum_uric_acid_levels")),
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  colour = type,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading of the covariate / the measure covariate in FGFP",
+  title = ("PRS and Observational Forest plot")) +
+  ggforce::facet_row(
+    facets = ~covar_name,
+    scales = "free_y"
+  ) +
+  # Apply theme adjustments
+  theme_classic() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),  # Title style
+    axis.title.x = element_text(size = 12, face = "bold"),  # X-axis title style
+    axis.text.x = element_text(size = 10),  # X-axis tick label style
+    strip.text = element_text(size = 12, face = "bold"),  # Facet label style
+    plot.margin = unit(c(1, 1, 1, 1), "lines")  # Adjust plot margins
+  )
+
+forestplot / (scatter1 + scatter2) + 
+  plot_layout(heights = c(1, 3)) + plot_annotation(tag_levels = "A")
+
+
+#Plot the beta coefficents with the forest plot
+#Now we can do the same for just the diversity metrics
+plot1 <- ggforestplot::forestplot(
+  df = filter(obsest_prsest_long, group == "Diversity"),
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  colour = type,
+  xlab = "SD increase in Rank normal transformed Microbial trait per 1-SD increase in polygenic loading of the covariate / the measure covariate",
+  title = "Selected Covariate-Microbiome relationships with strongest evidence of observational and PRS signal") +
+  ggforce::facet_row(
+    facets = ~covar_name,
+    scales = "free_y"
+  )
+
+
+ggplot(harm_data_all[["yengo_bmi"]][["Div_Chao1_RNT"]], aes(beta.exposure, beta.outcome)) +
       geom_point() +
-      geom_errorbar(aes(ymax = frequentist_add_beta_1 + 1.96*frequentist_add_se_1, ymin = frequentist_add_beta_1 - 1.96*frequentist_add_se_1)) +
-      geom_errorbar(aes(xmax = beta + 1.96*SE, xmin = beta - 1.96*SE)) +
-      geom_smooth(method="lm") +
+  geom_errorbar(aes(ymax = beta.outcome + 1.96*se.outcome, ymin = beta.outcome - 1.96*se.outcome)) +
+      geom_errorbar(aes(xmax = beta.exposure + 1.96*se.exposure, xmin = beta.exposure - 1.96*se.exposure)) +
+      geom_smooth(method="lm")
+      
+  
+  
+  
+  
+   +
 labs(title = paste0("Beta Coefficent Correlation between ", bug, " and ", covar),
      x = "Beta coefficents from covariate GWAS",
      y = "Beta coefficients from bug GWAS for covariate SNPs") #+
 #geom_abline(intercept=0, slope=1)
-}
 
-#plot
+lm(beta.exposure 
+
+#Lets also focus in on those relationships where we are looking at in MiBioGen
+
+
+
+
+
 ```
 
 
@@ -675,44 +794,43 @@ This is particularly problematic when lowering the pvalue threshold for selectin
 
 
 ```{r}
-#obs_prs_cor_betacor <- filtered_data %>% select(-std.error_obs, -std.error_prs)
-#
-#obs_prs_cor_betacor$mt <- gsub("Res", "", obs_prs_cor_betacor$mt)
-#
-#obs_prs_cor_betacor <- merge(obs_prs_cor_betacor, 
-#                             naming_map[,c("term", "covar_name")],
-#                             by = "term")
-#
-#obs_prs_cor_betacor <- obs_prs_cor_betacor %>% select(-term)
-#
-#obs_prs_cor_betacor <- merge(lm_out,
-#      naming_map[,c("prs", "covar_name")], 
-#      by.x = "covar", by.y = "prs") %>% 
-#  mutate(type = "BetaGWAS_Correlation") %>%
-#  rename(mt = bug) %>%
-#  select(mt, type, estimate, std.error, covar_name) %>%
-#  rbind(obs_prs_cor_betacor)
-#
-##Remove diversity metrics from the plot
-#sig_corbetas_nodiv <- sig_corbetas[!grepl("Div_", sig_corbetas$bug),]
-#
-#obs_prs_cor_betacor_filt <- obs_prs_cor_betacor %>% filter(mt %in% sig_corbetas_nodiv$bug)
-#
-#obs_prs_cor_betacor_filt <- obs_prs_cor_betacor_filt[1:3,]
-#
-##Forest plot for the observational and PRS estimate
-#ggforestplot::forestplot(
-#  df = obs_prs_cor_betacor_filt,
-#  name = mt,
-#  estimate = estimate,
-#  se = std.error,
-#  colour = type,
-#  xlab = "hold",
-#  title = "hold") +
-#  ggforce::facet_col(
-#    facets = ~covar_name,
-#    scales = "free_y"
-#  )
-#
-#
+# Lets load in the plots generated from the previous Rscript
+load(file.path(data.path, "data_out/mibiogen_manplots.RData"))
+
+#Ones to highlight as examples
+#Roseburia, Porphyromonadaceae, Erysipelotrichaceae, Firmicutes
+
+traits4plots <- c("genus.Roseburia.id.2012", 
+                  "family.Porphyromonadaceae.id.943",
+                  "family.Erysipelotrichaceae.id.2149",
+                  "phylum.Firmicutes.id.1672")
+
+plots <- list()
+
+for(i in 1:length(traits4plots)){
+
+mt_mbg <- traits4plots[i]
+mt_fgfp <- matched_bugs[matched_bugs$mbgbugs == mt_mbg, "fgfpbugs"]
+
+# Your forest plot code
+forestplot_plot <- ggforestplot::forestplot(
+  df = filter(obsest_prest_betacor_long, mt == mt_fgfp),
+  name = mt,
+  estimate = estimate,
+  se = std.error,
+  pvalue = p.value,
+  colour = type,
+  xlab = "Beta",
+  title = "Beta coefficents from FGFP analysis"
+) +
+  ggforce::facet_row(
+    facets = ~covar_name
+  ) + labs(color = "Regression_Type")
+
+plots[[mt_mbg]][[1]] <- forestplot_plot / manplots[[mt_mbg]] + plot_layout(heights = c(1,4))
+
+plots[[mt_mbg]][[2]] <- manplots[[mt_mbg]] + inset_element(forestplot_plot, left = 0, bottom = 0, right = 0.5, top = 0.3)
+
+}
+
 ```
