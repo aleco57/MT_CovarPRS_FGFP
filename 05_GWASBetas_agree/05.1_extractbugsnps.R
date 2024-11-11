@@ -46,7 +46,7 @@ bug_sumstats[[prs]][[bug]] <- data.table::fread(file = file.path(data.path, "dav
 merged_gwasbetas <- list()
 for(covar in names(bug_sumstats)){
   for(bug in names(bug_sumstats[[covar]])){
-    merged_gwasbetas[[covar]][[bug]] <- merge(bug_sumstats[[covar]][[bug]][,c("snpid", "frequentist_add_beta_1", "frequentist_add_se_1", "frequentist_add_pvalue")],
+    merged_gwasbetas[[covar]][[bug]] <- merge(bug_sumstats[[covar]][[bug]],
                       snps_df[[covar]],
                       by.x = "snpid", by.y = "fgfp_linker")
   }
