@@ -365,7 +365,7 @@ ggforestplot::forestplot(
 
 ## Figure 8: Unadjusted Heritability estimates of our candidate bivariate relationships plotted with the adjusted h2 by the covariate PRS
 
-```{r Fig8, fig.width=15, fig.height=20, fig.align='center', out.height="70%", out.width="90%", fig.cap="Heritability estimated by GREML for our microbiome traits with evidence of association with covariate from previous analysis. The heritability has been recalculated before and after adjustment of covariate PRS."}
+```{r Fig8, fig.width=10, fig.height=15, fig.align='center', out.height="70%", out.width="90%", fig.cap="Heritability estimated by GREML for our microbiome traits with evidence of association with covariate from previous analysis. The heritability has been recalculated before and after adjustment of covariate PRS."}
 #First extract the bug names by removing any part of the string after "_res_" in the trait column 
 h2forplot <- h2out[["dircons"]] %>%
   mutate(bug = gsub("_res_.*", "", trait),
@@ -378,55 +378,34 @@ h2forplot <- cbind(h2forplot,
 
 splitdf <- split(h2forplot, h2forplot$type)
 
-#How many do we need of the unadjusted?
-bug_counts <- splitdf$Adjusted$bug %>% table() %>% as.data.frame()
-
-for (i in 1:nrow(bug_counts)){
-  if(bug_counts[i,2] > 1){
-    bug <- bug_counts[i,1]
-    freq <- bug_counts[i,2] - 1
-    index <- which(splitdf$Unadjusted$bug == bug)
-    
-    duplicated_row <- splitdf$Unadjusted[index,]
-    duplicated_rows <- duplicated_row[rep(1, freq), , drop = FALSE]
-    
-    splitdf$Unadjusted <- rbind(splitdf$Unadjusted, duplicated_rows)
-  }
-}
-
 
 #Now add in multiple adjustment
-splitdf$Adjusted <- mutate(splitdf$Adjusted, covar_name = ifelse(covar2 == "", covar_name, "MultipleCovar"))
+splitdf$Adjusted <- mutate(splitdf$Adjusted, covar_name = ifelse(covar2 == "", paste0(covar_name, "_Adj"), "MultipleAdj"))
 
-#Reorder and add in the same covar1 term
-splitdf$Unadjusted <- splitdf$Unadjusted[match(splitdf$Adjusted$bug, splitdf$Unadjusted$bug), ]
+splitdf$Unadjusted <- mutate(splitdf$Unadjusted, covar_name = "h2_crude")
 
-splitdf$Unadjusted <- mutate(splitdf$Unadjusted, covar_name = splitdf$Adjusted$covar_name)
-
-
-#Now bind back together
-h2forplot <- rbind(splitdf$Adjusted, splitdf$Unadjusted)
+h2forplot <- rbind(splitdf$Unadjusted, splitdf$Adjusted)
 
 #Change the ordering for the groups
 h2forplot$covar_name <- factor(h2forplot$covar_name, 
-                                levels = c(setdiff(unique(h2forplot$covar_name), "MultipleCovar"), "MultipleCovar"))
+                                levels = c(setdiff(unique(h2forplot$covar_name), "MultipleAdj"), "MultipleAdj"))
 
 #Forest plot for the observational and PRS estimate
 ggforestplot::forestplot(
-  df = h2forplot,
-  name = bug,
-  estimate = h2,
-  se = se,
-  pvalue = pval,
-  colour = type,
-  xlab = "GCTA-GREML h2 estimate",
-  ylab = "Gut Microbiome Trait") +
-  ggforce::facet_col(
-    facets = ~covar_name,
-    scales = "free_y"
-  ) +
-  labs(colour = "h2 Adjustment Type") 
-
+    df = h2forplot,
+    name = covar_name,
+    estimate = h2,
+    se = se,
+    pvalue = pval,
+    xlab = "GCTA-GREML h2 estimate",
+    ylab = "h2 Adjustment model",
+    colour = covar_name  # Map color based on covar_name
+) +
+    ggforce::facet_col(
+        facets = ~bug,
+        scales = "free_y"
+    ) +
+    scale_color_discrete() +guides(color = "none")
 ```
 
 \newpage
@@ -561,7 +540,7 @@ ggforestplot::forestplot(
 
 ## Figure 11: Manhattan plot of suggestive signals from MiBioGen GWAS, for a selection of microbiome traits with strong influence of human covariate from previous analysis pipeline
 
-```{r Fig11, out.height="70%", out.width="90%", fig.width=35, fig.height=30, fig.align='center', fig.cap="Annotation of MiBioGen suggestive signals (p < 1e-4) for a selection of our microbiome-covariate candidate relationships. The microbiome GWAS has been annotated with any covariate SNPs (or those in LD with covariate SNPs) to examine evidence of signal in the microbiome GWAS. The x-axis represents the genomic position of the SNP and the y-axis represents the -log10(p-value) of the SNP association with the microbiome trait. The plot has also been annoted with the genome wide significance threshold (p < 5e-8) and the suggestive threshold used for downstream Mendelian randomisation instrument selection (p < 1e-5)."}
+```{r Fig11, out.height="90%", out.width="90%", fig.width=35, fig.height=30, fig.align='center', fig.cap="Annotation of MiBioGen suggestive signals (p < 1e-4) for a selection of our microbiome-covariate candidate relationships. The microbiome GWAS has been annotated with any covariate SNPs (or those in LD with covariate SNPs) to examine evidence of signal in the microbiome GWAS. The x-axis represents the genomic position of the SNP and the y-axis represents the -log10(p-value) of the SNP association with the microbiome trait. The plot has also been annoted with the genome wide significance threshold (p < 5e-8) and the suggestive threshold used for downstream Mendelian randomisation instrument selection (p < 1e-5)."}
 
 # Lets load in the plots generated from the previous Rscript
 load(file.path(data.path, "data_out/mibiogen_manplots.RData"))
