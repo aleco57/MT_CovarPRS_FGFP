@@ -144,14 +144,30 @@ save(data4prs, file = file.path(data.path, "data_out/fgfpdata4prs.RData"))
 prs2use <- paste0(data4prs$phenos2use$prs, ".Pt_5e.08")
 
 #First lets make a df with all our variables of interest, this will be our confounders, cont PRSs and MTs
-prsmicropheno_df <- merge(data4prs$pheno_covariate_prs[,c(data4prs$phenos2use$pheno, prs2use, "fgfp_id")],
+prsmicropheno_df <- merge(data4prs$pheno_covariate_prs[,c("fgfp_id", "IID", data4prs$phenos2use$pheno, prs2use)],
                      dplyr::select(data4prs$gwasedmts, linker, ends_with("RNTRes")),
                      by.x = "fgfp_id",
                      by.y = "linker",
                      all = T) %>% distinct()
 
+
+
+#We can make a prsmicro scaled removing the genetic IDs we do not want
+#First load in the exclusion file - FScalePC does not need to be removed - it is explained in Dave's QC file
+excl <- read.table(file.path(pdir, "data/FGFP_data/FGFP_MT/sample_qc/Sample_Exclusion_Criteria.txt"),
+                   header = TRUE, as.is = TRUE, sep = "\t")
+
+#This function removes the genetic IDs we do not want and also removes those without microbiome data
+IDs2remove <- apply(excl[, c(3, 5:11)], 2, function(column) {
+  rownames(excl)[which(column == 1)]
+}) %>% unlist() %>% unname() %>% unique()
+
+
+prsmicro_df <- prsmicropheno_df %>% dplyr::filter(!IID %in% IDs2remove & !is.na(IID)) %>% select(-data4prs$phenos2use$pheno)
+
+
 #Also make a scaled df:
-prsmicropheno_df_scale <- scale(prsmicropheno_df[,-1]) %>% as.data.frame()
+prsmicro_df_scale <- scale(prsmicro_df[,-c(1:2)]) %>% as.data.frame()
 
 #Extract the RNT traits
 RNTs <- data4prs$gwasedmts %>% dplyr::select(ends_with("RNTRes")) %>% colnames()
@@ -163,7 +179,7 @@ regout_RNTs_multivar <- tibble()
 
 for(mt in RNTs){
   #First run multivar
-  m <- lm(reformulate(prs2use, response = mt), data = prsmicropheno_df_scale)
+  m <- lm(reformulate(prs2use, response = mt), data = prsmicro_df_scale)
   out <- tidy(m, conf.int = TRUE) %>% cbind(nobs(m), mt) %>% dplyr::filter(term != "(Intercept)")
   regout_RNTs_multivar <- rbind(regout_RNTs_multivar, out) 
   
@@ -171,7 +187,7 @@ for(mt in RNTs){
   for (prs in prs2use){
  
 #Run the regression, scale it, extract coefficents of interest and bind to df
-    lm2 <- lm(reformulate(prs, response = mt), data = prsmicropheno_df_scale)
+    lm2 <- lm(reformulate(prs, response = mt), data = prsmicro_df_scale)
     out2 <- tidy(lm2) %>% 
       dplyr::filter(term == prs) %>% 
       cbind(nobs(lm2), mt)
@@ -192,11 +208,21 @@ regout_prsRNTs <- list(regout_RNTs_univar = regout_RNTs_univar,
 ####################################################################
 #Can just look at those with signal as highlighted above, however I think best to run for all then filter on the ones we are interested in after
 
+
+#We now want to edit dataframe to remove duplicates that are present from repeat genetic measures
+
+micropheno_df <- prsmicropheno_df %>% select(-IID, -prs2use) %>% distinct()
+
+
+#Also make a scaled df:
+micropheno_df_scale <- scale(micropheno_df[,-1]) %>% as.data.frame()
+
+
 obs_est <- tibble()
 for(mt in RNTs){
 
 for(pheno in data4prs$phenos2use$pheno)  {
-    lm <- lm(reformulate(pheno, response = mt), data = prsmicropheno_df_scale)
+    lm <- lm(reformulate(pheno, response = mt), data = micropheno_df_scale)
     out <- lm %>% 
       tidy() %>% 
       dplyr::filter(term != "(Intercept)") %>% 
