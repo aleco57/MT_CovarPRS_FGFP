@@ -4,9 +4,7 @@
 #Library
 library(tidyverse)
 library(data.table)
-library(qqman)
 library(ggrepel)
-library(LDlinkR)
 library(broom)
 library(TwoSampleMR)
 
@@ -30,8 +28,6 @@ load(file.path(data.path, "data_out/filtered_bug_sumstats_05.1.RData"))
 #Lets look at FGFP sumstats
 ############################
 
-
-#Update this so that we first harmonise the snps with MR package !!
 
 #Get our candidiates we are intersted in
 #
@@ -76,11 +72,20 @@ for(covar in names(merged_gwasbetas)){
     
     harm_data_all[[covar]][[bug]] <- harmonise_data(exposure = fgfp_bug, outcome = covarss)
     
+    #Linear regression
     out <- lm(beta.exposure ~ beta.outcome, data = harm_data_all[[covar]][[bug]]) %>% summary() %>% tidy() %>% filter(term == "beta.outcome")
     
-    out <- cbind(out, covar, bug)
+    #We can also run IVW regression so we can uncertainty of our SNP estimates into the model
+    harm_data_all[[covar]][[bug]]$weights <- 1/(harm_data_all[[covar]][[bug]]$se.exposure^2 + harm_data_all[[covar]][[bug]]$se.outcome^2)
+    ivw_out <- lm(beta.exposure ~ beta.outcome, data = harm_data_all[[covar]][[bug]], weights = harm_data_all[[covar]][[bug]]$weights) %>% summary() %>% tidy() %>% filter(term == "beta.outcome")
+    colnames(ivw_out) <- paste0("ivw_", colnames(ivw_out))
+    
+    #Now we can merge with our estimates
+    out <- cbind(out, ivw_out, covar, bug)
     lm_out <- rbind(lm_out, out)
   }}
 
 #Save the output
 save(lm_out, harm_data_all, file = file.path(data.path, "data_out/BetaCor_05.3.RData"))
+
+
