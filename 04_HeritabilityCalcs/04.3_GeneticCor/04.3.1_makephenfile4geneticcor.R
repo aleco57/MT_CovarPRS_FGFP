@@ -26,6 +26,20 @@ plinkbgen_linker <- read.table(file = file.path(data.path, "greml/mapping_files/
 #Read in our dir_cons associations
 load(file = file.path(data.path, "data_out/data_ConsistentAssoc03.2.RData"))
 
+#Also read in our IDs to remove from the bgen file
+#We can make a prsmicro scaled removing the genetic IDs we do not want
+#First load in the exclusion file - FScalePC does not need to be removed - it is explained in Dave's QC file
+excl <- read.table(file.path(pdir, "data/FGFP_data/FGFP_MT/sample_qc/Sample_Exclusion_Criteria.txt"),
+                   header = TRUE, as.is = TRUE, sep = "\t")
+
+#This function removes the genetic IDs we do not want and also removes those without microbiome data
+IDs2remove <- apply(excl[, c(3, 5:11)], 2, function(column) {
+  rownames(excl)[which(column == 1)]
+}) %>% unlist() %>% unname() %>% unique()
+
+#Remove these from our plinkbgen linker
+plinkbgen_linker <- plinkbgen_linker %>% filter(!bgenid1 %in% IDs2remove)
+
 #############################################################################
 # We want to generate .phen file dir cons analysis
 # Have now removed code which focused on h2 phenotypes from FGFP GWAS results
@@ -41,8 +55,7 @@ phenos4cor <- merge(data4prs$pheno_covariate_prs[,c(unique(candidate_bugs$term),
                     by.y = "linker",
                     all = T) %>% 
   #Then filter to the only individuals in the bgen file
-  dplyr::filter(IID %in% plinkbgen_linker$bgenid1,
-                fgfp_id %in% plinkbgen_linker$fgfp_id) %>% 
+  dplyr::filter(IID %in% plinkbgen_linker$bgenid1) %>% 
   distinct()
 
 #Lets scale our pheno variables to see if aids for convergence of GREML

@@ -1093,3 +1093,127 @@ ggforestplot::forestplot(
     scales = "free_y"
   )
 ```
+
+
+
+```{r, eval=F}
+
+#Volcano plots if ever wanted to use this
+
+#Lets look at the volcano plots of our interesting assciations
+
+#Make list for storing plots
+plots <- list()
+
+for(i in 1:nrow(tofollow)){
+  #Covar volcano plot
+  volbug <- tofollow$mbgbugs[i]
+  volcovar <- tofollow$covar[i]
+  covarname_clean <- naming_map$covar_name[naming_map$prs == volcovar]
+  
+  mbg_dir <- filter(lm_out_mbg, mbgbugs == volbug & covar == volcovar)[["estimate"]] %>% sign()
+  
+  data4vol <- mutate(harm_data_all_mbg[[volcovar]][[volbug]],
+                     BetaDirAgreement = ifelse(sign(beta.exposure)*sign(beta.outcome) == mbg_dir, "Consistent Dir", "Inconsistent Dir")) %>% filter(!is.na(BetaDirAgreement))
+  
+  ### First a scatter of the MBG SNPs
+  # We want to compute the IVW and linear regression so this can be displayed on the plot
+  
+  lm <- lm(beta.exposure ~ beta.outcome, data = data4vol)
+  lm_p <- summary(lm)$coefficients[2, 4] %>% round(3)
+  ivw <- lm(beta.exposure ~ beta.outcome, data = data4vol, weights = data4vol$weights)
+  ivw_p <- summary(ivw)$coefficients[2, 4] %>% round(3)
+  
+  
+  
+  
+  plots[[covarname_clean]][[volbug]][["scatter"]] <- ggplot(data4vol, aes(beta.outcome, beta.exposure)) +
+    geom_errorbar(aes(ymax = beta.exposure + 1.96 * se.exposure, ymin = beta.exposure - 1.96 * se.exposure), 
+                  width = 0, alpha = 0.5) +  # Semi-transparent error bars
+    geom_errorbar(aes(xmax = beta.outcome + 1.96 * se.outcome, xmin = beta.outcome - 1.96 * se.outcome), 
+                  width = 0, alpha = 0.5) +
+    geom_point(shape = 21, color = "black", fill = "steelblue", size = 3) + 
+    geom_abline(
+      slope = coef(lm)[2], 
+      intercept = coef(lm)[1], 
+      color = "seagreen",
+      size = 1
+    ) +
+    geom_abline(
+      slope = 0, 
+      intercept = 0, 
+      color = "red",
+      size = .5,
+      linetype = "dashed"
+    )  +
+    annotate("text", x = min(data4vol$beta.outcome - 1.96 * data4vol$se.outcome), y = min(data4vol$beta.exposure - 1.96 * data4vol$se.exposure),
+             label = paste("lm pval=", lm_p,"\nIVW pval =", ivw_p), color = "black", hjust = 0, size = 4) +
+    labs(title = paste("Correlation of", covarname_clean, "SNPs between", covarname_clean, "GWAS and\nMiBioGen_EURnofgfp", volbug, "bug GWAS"),
+         x = paste(covarname_clean, "GWAS Betas"),
+         y = paste(volbug, "GWAS Betas")) +
+    theme(
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      axis.title = element_text(size = 12, face = "bold"),
+      axis.text = element_text(size = 10),
+      plot.margin = unit(c(1, 1, 1, 1), "lines")
+    )
+  
+  plots[[covarname_clean]][[volbug]][["vol1"]] <- ggplot(data4vol, aes(x = beta.outcome, y = -log10(pval.outcome), col = BetaDirAgreement)) +
+    geom_point(size = 2, alpha = 0.8) +
+    geom_hline(yintercept = -log10(5e-8), col = "red", linetype = "dashed", size = 1) +
+    scale_color_manual(
+      values = c("Consistent Dir" = "green3", "Inconsistent Dir" = "firebrick"),
+      name = "Beta direction Agreement with Microbiome GWAS"
+    ) +
+    labs(
+      title = paste("Volcano Plot of", covarname_clean, "SNPs coloured by beta directionality agreement\nwith" , volbug, "GWAS"),
+      subtitle = "Red dashed line represents genome-wide significance threshold (p < 5e-8)",
+      x = "Effect Size (Beta)",
+      y = expression(-log[10](p-value))
+    ) +
+    # Minimal theme with adjustments
+    theme_minimal(base_size = 14) +
+    theme(
+      legend.position = "top",
+      legend.title = element_text(size = 12),
+      legend.text = element_text(size = 10),
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 12, hjust = 0.5),
+      axis.title = element_text(size = 14),
+      axis.text = element_text(size = 12)
+    )
+  
+  plots[[covarname_clean]][[volbug]][["vol2"]] <- ggplot(data4vol, aes(x = beta.exposure, y = -log10(pval.exposure), col = BetaDirAgreement)) +
+    geom_point(size = 2, alpha = 0.8) +
+    scale_color_manual(
+      values = c("Consistent Dir" = "green3", "Inconsistent Dir" = "firebrick"),
+      name = paste("Beta direction Agreement with", covarname_clean, "GWAS")
+    ) +
+    labs(
+      title = paste("Volcano Plot of", covarname_clean, "SNPs from", volbug, "GWAS\ncoloured by beta directionality agreement with" , covarname_clean, "GWAS"),
+      x = "Effect Size (Beta)",
+      y = expression(-log[10](p-value))
+    ) +
+    # Minimal theme with adjustments
+    theme_minimal(base_size = 14) +
+    theme(
+      legend.position = "top",
+      legend.title = element_text(size = 12),
+      legend.text = element_text(size = 10),
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 12, hjust = 0.5),
+      axis.title = element_text(size = 14),
+      axis.text = element_text(size = 12)
+    )
+  
+  plots[[covarname_clean]][[volbug]][["all"]] <- plots[[covarname_clean]][[volbug]][["scatter"]] + (plots[[covarname_clean]][[volbug]][["vol1"]] / plots[[covarname_clean]][[volbug]][["vol2"]])
+}
+
+
+#Lets look at all of these
+for(i in 1:length(plots)){
+  for(j in 1:length(plots[[i]])){
+    plots[[i]][[j]][["all"]] %>% print()
+  }
+}
+```

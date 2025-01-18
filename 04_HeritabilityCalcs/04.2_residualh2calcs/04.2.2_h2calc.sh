@@ -35,7 +35,7 @@ for num in $(seq 3 $num_cols); do
          --pheno ${pheno_file} \
          --mpheno $index \
          --reml \
-         --out ${geno_prefix}/greml_out/h2_out/dircons/h2out_$pheno \
+         --out ${geno_prefix}/greml_out/h2_out/dircons/h2out_$index \
          --thread-num 10
 done
 

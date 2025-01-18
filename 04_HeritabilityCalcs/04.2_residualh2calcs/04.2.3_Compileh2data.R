@@ -9,7 +9,7 @@ library(stringr)
 #Data path for proj dir
 data.path <- "../../../../data/PhenoPRS"
 
-for (i in c("dircons", "h2bugs")){
+i <- "dircons"
   #Read in the h2 estimates from GREML
   h2files <- list.files(file.path(data.path, "greml/greml_out/h2_out", i)) %>% str_subset(".hsq")
   
@@ -20,14 +20,20 @@ for (i in c("dircons", "h2bugs")){
   }
   #Make output a dataframe
   h2_estimates <- as.data.frame(h2_estimates)
+  colnames(h2_estimates) <- c("file", "h2", "se", "pval")
+  
+  #Order the file column in order of number
+  h2_estimates$file <- gsub("h2out_", "", h2_estimates$file)
+  h2_estimates$file <- gsub(".hsq", "", h2_estimates$file)
+  h2_estimates$file <- as.numeric(h2_estimates$file)
+  h2_estimates <- h2_estimates[order(h2_estimates$file),]
   
   #Match these to the correct phenotypes
-  colnames(h2_estimates) <- c("file", "h2", "se", "pval")
-  h2_estimates$trait <- gsub("h2out_", "", h2_estimates$file)
-  h2_estimates$trait <- gsub(".hsq", "", h2_estimates$trait)
+  
+  #Load in the phenotype names
+  name_vector <- readLines(file.path(data.path, "greml/phenos4greml/dircons/dircons_phenos.txt"))
+  h2_estimates$trait <- name_vector
   
   #Save the formatted file
   write.table(h2_estimates, file = file.path(data.path, "greml/greml_out/h2_out/", i, "cleanh2est.txt"), row.names = F, quote = F, sep = "\t")
   
-  
-}
