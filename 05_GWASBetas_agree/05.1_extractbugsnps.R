@@ -77,12 +77,12 @@ mbgbugs <- c("simpson", #Div_NumGen
              "genus.Ruminococcus1.id.11373",
              "family.Erysipelotrichaceae.id.2149", #G_unclassified
              "family.Ruminococcaceae.id.2050",
+             "genus.Faecalibacterium.id.2057",
              "genus.Oscillibacter.id.2063",
              "genus.Bacteroides.id.918",
              "family.Rhodospirillaceae.id.2717", #G_Aestuariispira
              "family.Lachnospiraceae.id.1987", #G_Coprococcus
-             "shannon",
-             "family.Porphyromonadaceae.id.943")
+             "shannon")
 
 matched_bugs <- data.frame(fgfpbugs = unique(candidate_bugs$mt), mbgbugs = mbgbugs)
 

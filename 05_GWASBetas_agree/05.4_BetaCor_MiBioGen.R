@@ -45,12 +45,12 @@ mbgbugs <- c("simpson", #Div_NumGen
              "genus.Ruminococcus1.id.11373",
              "family.Erysipelotrichaceae.id.2149", #G_unclassified
              "family.Ruminococcaceae.id.2050",
+             "genus.Faecalibacterium.id.2057",
              "genus.Oscillibacter.id.2063",
              "genus.Bacteroides.id.918",
              "family.Rhodospirillaceae.id.2717", #G_Aestuariispira
              "family.Lachnospiraceae.id.1987", #G_Coprococcus
-             "shannon",
-             "family.Porphyromonadaceae.id.943")
+             "shannon")
 
 matched_bugs <- data.frame(fgfpbugs = unique(candidate_bugs$mt), mbgbugs = mbgbugs)
 
@@ -146,7 +146,24 @@ lm_out_mbg <- do.call(rbind, lapply(names(lm_out_mbg_split), function(covar) {
 
 rownames(lm_out_mbg) <- NULL  # Remove rownames
 
-save(lm_out_mbg, harm_data_all_mbg, file = file.path(data.path, "data_out/BetaCorMBG_05.3.RData"))
+
+#Add in the full taxa names 
+#load in Hughes_fgfp supplementary file so we can merge with the full taxa information
+fgfp_traits <- read_xlsx(path = file.path(data.path, "Hughes_mtGWAS.xlsx"),
+                         sheet = "Table S3",
+                         skip = 4)
+
+
+lm_out_mbg$TaxaName <- gsub("_RNTRes", "", lm_out_mbg$fgfpbugs)
+
+tax_cols <- colnames(fgfp_traits)[1:6]
+
+lm_out_mbg <- left_join(lm_out_mbg, 
+                        fgfp_traits[,1:6], by = "TaxaName")
+
+
+
+save(lm_out_mbg, harm_data_all_mbg, file = file.path(data.path, "data_out/BetaCorMBG_05.4.RData"))
 
 
 

@@ -22,10 +22,7 @@ load(file.path(data.path, "phenosumstats/filtered_sumstats_list.RData"))
 load(file.path(data.path, "data_out/data_ConsistentAssoc03.2.RData"))
 
 #Load in our MBG trait SNPs
-load(file.path(data.path, "data_out/BetaCorMBG_05.3.RData"))
-
-#Load in the script which has the full names of our traits
-load(file.path(data.path, "data_out/MBGRes_05.6.RData"))
+load(file.path(data.path, "data_out/BetaCorMBG_05.4.RData"))
 
 #Rename snps file with the new naming
 #Specify a function for cleaning directory names
@@ -448,11 +445,6 @@ finaldf_snpstofollow <- map_dfr(snpstofollow_results, function(x) {
     filter(y$bac, P.weightedSumZ == min(P.weightedSumZ)) 
   }, .id = "covar_name")
 }) %>% cbind(covarsnps_tofollow_flipped)
-
-
-
-#We are nearly there - just seems to be an issue with the triglyceride SNPs so will need to check over this
-
 
 #Find R2 of the SNP
 finaldf_snpstofollow$R2 <- 

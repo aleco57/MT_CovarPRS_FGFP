@@ -31,7 +31,7 @@ for (i in 1:10) {
 }
 confounders <- c(PCs, "age", "snpsex")
 confoundbatch <- c(PCs, "age", "snpsex", "drilled.cut", "Alliquoted.by", "Aliquote.date_year", "Date.of.extraction_year", "PCR.Plate")
-
+age_sex <- c("age", "snpsex")
 ### Now edit our "data4prs[["matchedvars"]]" slightly so we can select the PRSs we would like to take forwards
 #First we want to label if our variables are cont / binary / ordinal
 #We will use the following labels:
@@ -144,7 +144,7 @@ save(data4prs, file = file.path(data.path, "data_out/fgfpdata4prs.RData"))
 prs2use <- paste0(data4prs$phenos2use$prs, ".Pt_5e.08")
 
 #First lets make a df with all our variables of interest, this will be our confounders, cont PRSs and MTs
-prsmicropheno_df <- merge(data4prs$pheno_covariate_prs[,c("fgfp_id", "IID", data4prs$phenos2use$pheno, prs2use)],
+prsmicropheno_df <- merge(data4prs$pheno_covariate_prs[,c("fgfp_id", "IID", data4prs$phenos2use$pheno, prs2use, age_sex)],
                      dplyr::select(data4prs$gwasedmts, linker, ends_with("RNTRes")),
                      by.x = "fgfp_id",
                      by.y = "linker",
@@ -163,11 +163,14 @@ IDs2remove <- apply(excl[, c(3, 5:11)], 2, function(column) {
 }) %>% unlist() %>% unname() %>% unique()
 
 
-prsmicro_df <- prsmicropheno_df %>% dplyr::filter(!IID %in% IDs2remove & !is.na(IID)) %>% select(-data4prs$phenos2use$pheno)
+prsmicro_df <- prsmicropheno_df %>% dplyr::filter(!IID %in% IDs2remove & !is.na(IID)) %>% 
+  select(-data4prs$phenos2use$pheno)
 
 
 #Also make a scaled df:
-prsmicro_df_scale <- scale(prsmicro_df[,-c(1:2)]) %>% as.data.frame()
+prsmicro_df_scale <- scale(prsmicro_df %>% select(-fgfp_id, -IID, -snpsex)) %>% as.data.frame() %>% 
+  #We didnt want to scale sex and wanted to keep this as an integer, so add this variable back in
+  cbind(as.factor(prsmicro_df$snpsex)) %>% rename(snpsex = "as.factor(prsmicro_df$snpsex)")
 
 #Extract the RNT traits
 RNTs <- data4prs$gwasedmts %>% dplyr::select(ends_with("RNTRes")) %>% colnames()
@@ -179,15 +182,15 @@ regout_RNTs_multivar <- tibble()
 
 for(mt in RNTs){
   #First run multivar
-  m <- lm(reformulate(prs2use, response = mt), data = prsmicro_df_scale)
-  out <- tidy(m, conf.int = TRUE) %>% cbind(nobs(m), mt) %>% dplyr::filter(term != "(Intercept)")
+  m <- lm(reformulate(c(prs2use,age_sex), response = mt), data = prsmicro_df_scale)
+  out <- tidy(m, conf.int = TRUE) %>% cbind(nobs(m), mt) %>% dplyr::filter(term %in% prs2use)
   regout_RNTs_multivar <- rbind(regout_RNTs_multivar, out) 
   
   #Then run it as univar
   for (prs in prs2use){
  
 #Run the regression, scale it, extract coefficents of interest and bind to df
-    lm2 <- lm(reformulate(prs, response = mt), data = prsmicro_df_scale)
+    lm2 <- lm(reformulate(c(prs, age_sex), response = mt), data = prsmicro_df_scale)
     out2 <- tidy(lm2) %>% 
       dplyr::filter(term == prs) %>% 
       cbind(nobs(lm2), mt)
@@ -211,26 +214,29 @@ regout_prsRNTs <- list(regout_RNTs_univar = regout_RNTs_univar,
 
 #We now want to edit dataframe to remove duplicates that are present from repeat genetic measures
 
-micropheno_df <- prsmicropheno_df %>% select(-IID, -prs2use) %>% distinct()
-
+micropheno_df <- prsmicropheno_df %>% select(-IID, -prs2use) %>% distinct() %>%
+  filter(!if_all(-fgfp_id, is.na))
 
 #Also make a scaled df:
-micropheno_df_scale <- scale(micropheno_df[,-1]) %>% as.data.frame()
+micropheno_df_scale <- scale(micropheno_df %>% select(-fgfp_id, -snpsex)) %>% as.data.frame() %>% 
+  #We didnt want to scale sex and wanted to keep this as an integer, so add this variable back in
+  cbind(as.factor(micropheno_df$snpsex)) %>% rename(snpsex = "as.factor(micropheno_df$snpsex)")
 
 
 obs_est <- tibble()
 for(mt in RNTs){
 
 for(pheno in data4prs$phenos2use$pheno)  {
-    lm <- lm(reformulate(pheno, response = mt), data = micropheno_df_scale)
+    lm <- lm(reformulate(c(pheno, age_sex), response = mt), data = micropheno_df_scale)
     out <- lm %>% 
       tidy() %>% 
-      dplyr::filter(term != "(Intercept)") %>% 
+      dplyr::filter(term == pheno) %>% 
       cbind(nobs(lm), mt)
     
     obs_est <- rbind(obs_est, out) 
 }
 }
+
 
 #Edit this slightly so better display in plots
 #Make another column so we can group the bug
