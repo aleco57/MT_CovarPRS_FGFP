@@ -8,6 +8,9 @@ library("data.table")
 #Data path for proj dir
 data.path <- "../../../data/PhenoPRS"
 
+#Load in 006 data dir file path
+source("../../parameters/base_dir.R")
+
 #Load in the instrument data for the covars
 load(file.path(data.path, "phenosumstats/filtered_sumstats_list.RData"))
 
@@ -90,7 +93,7 @@ matched_bugs <- data.frame(fgfpbugs = unique(candidate_bugs$mt), mbgbugs = mbgbu
 matched_bugs <- matched_bugs[!is.na(matched_bugs$mbgbugs),]
 
 #Path to where to nofgf sumstats are
-nofgf.path <- "../../../data/mibiogen_data/mibiogen_betafiles/nofgf_withMAF"
+nofgf.path <- file.path(pdir6, "/data/mibiogen_nofgfEUR/betas_withMAF_updated")
 
 #We again want to repeat the code above to find matching
 bug_sumstats_mbg <- list()

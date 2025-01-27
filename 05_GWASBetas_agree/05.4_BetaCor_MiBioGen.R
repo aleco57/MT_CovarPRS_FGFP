@@ -8,6 +8,7 @@ library(data.table)
 library(ggrepel)
 library(broom)
 library(TwoSampleMR)
+library(readxl)
 
 
 #Data path for proj dir

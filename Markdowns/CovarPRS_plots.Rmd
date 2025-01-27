@@ -75,6 +75,15 @@ naming_map <- obsest_prsest %>% select(term, covar_name, term_prs, prs) %>% uniq
 
 ```
 
+## Figure \@ref(fig:mrassump): Mendelian Randomisation Assumptions
+
+```{r mrassump, out.height="20%", out.width="90%", fig.align='center', fig.cap="For an MR estimand to be valid its three core assumptions should hold: 1. The genetic instrument must be associated with the exposure of interest. 2. There must be no confounding of the instrument and the outcome. 3. The genetic instrument must only affect the outcome through the exposure of interest."}
+# Figure 1: MR imported as PNG
+knitr::include_graphics(file.path(data.path, "markdowns/figs/MR_assump.png"))
+```
+
+\newpage
+
 ## Figure \@ref(fig:DAGs): Proposed DAGs for Microbiome IVs in Causal Inference
 
 ```{r DAGs, out.height="40%", out.width="90%", fig.align='center', fig.cap="DAGs of hypothesised relationships connecting the human genome, gut microbiome traits and microbiome covariables. (i) proposes vertical pleiotropy, the pleitropic mechnism required for MR estimates to be valid. Here we have depicted the heritable covariate as upstream of the microbiome trait, but could well be represented as the other way round. Other DAGs have been proposed where our Microbiome MR would no longer be valid, including misspecification of our primary phenotype (ii), heritable confounding (iii) and the microbiome trait upstream of our outcome (iv). Many other DAGs not presented would also bias our MR estimation."}
@@ -82,14 +91,14 @@ naming_map <- obsest_prsest %>% select(term, covar_name, term_prs, prs) %>% uniq
 knitr::include_graphics(file.path(data.path, "markdowns/figs/DAGs.pdf"))
 ```
 
-\vspace{20pt}
+\newpage
 
-## Figure \@ref(fig:mrassump): Mendelian Randomisation Assumptions
+## Figure \@ref(fig:method): Methodological Overview of analysis pipeline \\
 
-```{r mrassump, out.height="20%", out.width="90%", fig.align='center', fig.cap="For an MR estimand to be valid its three core assumptions should hold: 1. The genetic instrument must be associated with the exposure of interest. 2. There must be no confounding of the instrument and the outcome. 3. The genetic instrument must only affect the outcome through the exposure of interest."}
-# Figure 1: MR imported as PNG
-knitr::include_graphics(file.path(data.path, "markdowns/figs/MR_assump.png"))
+```{r method, out.height="80%", out.width="90%", fig.align='center', fig.cap="Methodological overview of the analysis pipeline. The analysis is aiming to uncover associations between the human genome and gut microbiome through microbiome covariates of interest. Once the microbiome covariates of interest have been generated, the pipeline consists of three main stages. The first is using individual-level data to regress our measured covariates onto the measured microbiome traits (beta1), regressing polygenic predictors of our covariates onto the same microbiome traits (beta2), and using GREML to estimate Rg between our covariates and microbiome traits (Rg). Next, by using summary statistics from our covariate and microbiome trait GWASs we plan to replicate inital findings from the individual level data, using both summary-level data of our FGFP cohort (beta3) and an independent subset of the MiBioGen cohort (beta4). Finally, using our results, we further annotate SNP signals from the full published MiBioGen results."}
+knitr::include_graphics(file.path(data.path, "markdowns/figs/Method_Overview2.pdf"))
 ```
+
 
 \newpage
 
@@ -121,6 +130,7 @@ formatted_table %>% kbl(caption = "Heritable Covariates selected for our analysi
 ```{r obsheat, out.height="80%", out.width="90%", fig.width=15, fig.height=15, fig.align='center', fig.cap="Results from observational association between selected heritable covariates and gut microbiome data in FGFP, visualised as a heat map. The boxes are coloured in if there was evidence of observational signal (p-value < 0.05). If the covariate and microbiome trait are positively correlated the box has been coloured in green, where if an negative relationship is observed the box has been coloured purple. The x axis has been ordered by the heritable covariate with the most observational signal to least."}
 #Make factor so levels don't change
 obs_est$group <- factor(obs_est$group, levels = unique(obs_est$group))
+obs_est$mt_clean <- gsub("_RNTRes", "", obs_est$mt)
 
 ### Heat Map
 
@@ -136,7 +146,7 @@ obs_est %>%
   mutate(covar_name = reorder(covar_name, -sig_count)) %>%  # Reorder based on significant results
   
   # Create the heatmap
-  ggplot(aes(x = covar_name, y = mt, fill = factor(sig))) +  # Convert sig to a factor for discrete color mapping
+  ggplot(aes(x = covar_name, y = mt_clean, fill = factor(sig))) +  # Convert sig to a factor for discrete color mapping
   geom_tile(color = "grey80", linewidth = 0.5) +  # Add borders to tiles
   
   # Use manual color scale for binary significance: white for 0, blue for 1
@@ -225,6 +235,7 @@ obs_est %>%
 # Lets revisit our heatmap, but this time with observational agreeement
 #Make factor so levels don't change
 obsest_prsest$group <- factor(obsest_prsest$group, levels = levels(obs_est$group))
+obsest_prsest$mt_clean <- gsub("_RNTRes", "", obsest_prsest$mt)
 
 obsest_prsest %>%
   # Update the sig column with descriptive labels
@@ -238,7 +249,7 @@ obsest_prsest %>%
   mutate(covar_name = reorder(covar_name, -sig_count)) %>%
   
   # Create the heatmap
-  ggplot(aes(x = covar_name, y = mt, fill = sig)) +  # Use the 'sig' column directly for fill
+  ggplot(aes(x = covar_name, y = mt_clean, fill = sig)) +  # Use the 'sig' column directly for fill
   geom_tile(color = "grey80", size = 0.5) +  # Add borders to tiles
   
   # Custom color scheme: white for No Signal, red for Disagreement, blue for Agreement
@@ -284,10 +295,8 @@ obsest_prsest %>%
   # Filter out 'No_Obs_Signal' to focus only on significant results
   filter(sig != "No_Obs_Signal") %>%
   
-  # Group by covariate and significance, then count the number of results in each group
-  group_by(covar_name, sig) %>%
-  summarise(count = n()) %>%
-  ungroup() %>%
+  count(covar_name, sig, name = "count") %>%
+  tidyr::complete(covar_name, sig = c("Beta_Agree", "Beta_Disagree"), fill = list(count = 0)) %>%
   
   # Reorder the x-axis (covar_name) based on the total number of significant results (descending)
   group_by(covar_name) %>%
@@ -331,6 +340,10 @@ obsest_prsest %>%
 ```{r forest, fig.width=8, fig.height=12, fig.align='center', fig.cap="Forest plot of the beta coefficents and 95%CI from the PRS and observational regressions where we had strong evidence of signal from the set of regressions. Strong evidence was determined by pval < 0.05 for both regressions and an agreement in beta directionality. This gave us our candidate bivariate relationships for downstream interrogation"}
 # Make a forest plot of the candidiate_bugs
 #We can also look at those with sig observational results
+
+#Make mt_clean
+candidate_bugs$mt_clean <- gsub("_RNTRes", "", candidate_bugs$mt)
+
 #First reshape the data
 obsest_prsest_long <- candidate_bugs %>%
   pivot_longer(cols = c(estimate_obs, estimate_prs), 
@@ -347,11 +360,10 @@ obsest_prsest_long <- candidate_bugs %>%
   mutate(type = recode(type, estimate_obs = "Observational", estimate_prs = "PRS"))
 
 
-
 #Forest plot for the observational and PRS estimate
 ggforestplot::forestplot(
   df = obsest_prsest_long,
-  name = mt,
+  name = mt_clean,
   estimate = estimate,
   se = std.error,
   pvalue = p.value,
@@ -384,7 +396,7 @@ candidate_bugs %>%
   #Add in 95%CIs for estimate_obs and estimate_prs
   mutate(ci95_obs = paste0(round(estimate_obs - 1.96 * std.error_obs, 3), ", ", round(estimate_obs + 1.96 * std.error_obs, 3)),
          ci95_prs = paste0(round(estimate_prs - 1.96 * std.error_prs, 3), ", ", round(estimate_prs + 1.96 * std.error_prs, 3))) %>%
-  select(mt, group, covar_name, estimate_obs, ci95_obs, p.value_obs, `nobs(lm)`, estimate_prs, ci95_prs, p.value_prs, `nobs(lm2)`) %>%
+  select(mt_clean, group, covar_name, estimate_obs, ci95_obs, p.value_obs, `nobs(lm)`, estimate_prs, ci95_prs, p.value_prs, `nobs(lm2)`) %>%
   rename(n_obs = `nobs(lm)`, n_prs = `nobs(lm2)`) %>%
   #Round to 3dp for numeric vars
   mutate(across(c(estimate_obs, estimate_prs), ~ round(., 3))) %>%
@@ -416,8 +428,6 @@ beta_cor <- mutate(lm_out,
 obsest_prest_betacor_long <- bind_rows(obsest_prsest_long, beta_cor)
 ```
 
-\newpage
-
 ##  Table \@ref(tab:fullnametable): Full classification of our microbiome traits of interest
 
 ```{r fullnametable}
@@ -439,6 +449,7 @@ select(covar_name, TaxaName, Phylum, Class, Order, Family, Genus, mbgbugs) %>%
 
 ```
 
+\newpage
 
 ## Figure \@ref(fig:fullforest): Forest plot of observational, PRS and beta coefficient correlaiton in FGFP, alongside replication of beta coefficient correlation in an independent microbiome GWAS population
 
@@ -493,11 +504,13 @@ fgfp_mbg_merged <- bind_rows(lm_out_mbg_subset,
     dataset = ifelse(!is.na(group), "FGFP", "MiBioGen_EURnofgfp")
   )
   
+#Make mt_clean
+fgfp_mbg_merged$mt_clean <- gsub("_RNTRes", "", fgfp_mbg_merged$mt)
   
 #Now we can make our plots
 
 
-ggplot(fgfp_mbg_merged, aes(x = estimate, y = mt, xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error)) +
+ggplot(fgfp_mbg_merged, aes(x = estimate, y = mt_clean, xmin = estimate - 1.96 * std.error, xmax = estimate + 1.96 * std.error)) +
   geom_pointrange(aes(colour = type), position = position_dodge(width = 0.5))  +
   facet_grid(covar_name ~ dataset, scales = "free", space = "free", switch = "y") +
   geom_vline(xintercept = 0, linetype = "dashed", color = "red") +
@@ -516,7 +529,7 @@ ggplot(fgfp_mbg_merged, aes(x = estimate, y = mt, xmin = estimate - 1.96 * std.e
   )  +
   geom_text(
     data = fgfp_mbg_merged %>% filter(dataset == unique(dataset)[1]), # Apply to only one dataset column
-    aes(x = 0.42, label = mbgbugs, y = mt), 
+    aes(x = 0.42, label = mbgbugs, y = mt_clean), 
     hjust = 0, size = 3, inherit.aes = FALSE
   ) +
   coord_cartesian(clip = "off") # Ensure annotations are not clipped
@@ -557,15 +570,17 @@ cor_beta[is.na(cor_beta$covar_name),c("covar_name", "term.y")] <- "BMI"
 cor_beta <- merge(cor_beta, rg, by.x = c("term.y", "fgfpbugs"), by.y = c("pheno1", "pheno2"), all = T)
 
 
-
+cor_beta$mt_clean <- gsub("_RNTRes", "", cor_beta$fgfpbugs)
 
 #Now we can make our table
 cor_beta %>%
   mutate(ci95_fgfpcor = paste0(round(fgfp_estimate - 1.96 * fgfp_std.error, 3), ", ", round(fgfp_estimate + 1.96 * fgfp_std.error, 3)),
          ci95_mbgcor = paste0(round(mbg_estimate - 1.96 * mbg_std.error, 3), ", ", round(mbg_estimate + 1.96 * mbg_std.error, 3))) %>%
-  select(fgfpbugs, covar_name, fgfp_estimate, ci95_fgfpcor, fgfp_p.value, rg_GREML, rg_se, mbgbugs, mbg_estimate, ci95_mbgcor, mbg_p.value) %>%
+  select(mt_clean, covar_name, fgfp_estimate, ci95_fgfpcor, fgfp_p.value, rg_GREML, rg_se, mbgbugs, mbg_estimate, ci95_mbgcor, mbg_p.value) %>%
   rename(`FGFP Beta Correlation` = fgfp_estimate,
-         `MiBioGen Beta Correlation` = mbg_estimate) %>%
+         `MiBioGen Beta Correlation` = mbg_estimate,
+         FGFP_Trait = mt_clean,
+         MiBioGen_Trait = mbgbugs) %>%
   #Order by covar_name
   arrange(covar_name) %>%
   #Round to 3dp for numeric vars
@@ -581,7 +596,7 @@ cor_beta %>%
 
 ## Figure \@ref(fig:manplots): Manhattan plot of those MiBioGen Microbiome traits with covariate SNPs in their suggestive associations
 
-```{r manplots, out.height="70%", out.width="90%", fig.width=10, fig.height=12, fig.align='center', fig.cap="Manhattan plots for all our Microbiome traits where a covariate SNP (or LD covariate SNP, R2 > 0.8) could be identified in its suggestive associations from the full MiBioGen summary statistics"}
+```{r manplots, out.height="70%", out.width="90%", fig.width=10, fig.height=12, fig.align='center'}
 #Make a table for the SNPs of interested in the family.Lachnospiraceae associations
 load(file.path(data.path, "data_out/ManPlotsMBG_05.5.RData"))
 
@@ -591,7 +606,7 @@ manplot[["family.Ruminococcaceae.id.2050"]] /
 manplot[["genus.Faecalibacterium.id.2057"]] 
 ```
 
-```{r, out.height="70%", out.width="90%", fig.width=10, fig.height=12, fig.align='center'}
+```{r, out.height="70%", out.width="90%", fig.width=10, fig.height=12, fig.align='center', fig.cap="Manhattan plots for all our Microbiome traits where a covariate SNP (or LD covariate SNP, R2 > 0.8) could be identified in its suggestive associations from the full MiBioGen summary statistics"}
 manplot[["genus.Ruminococcus1.id.11373"]] /
 manplot[["family.Erysipelotrichaceae.id.2149"]] /  
 manplot[["genus.Holdemanella.id.11393"]] /
@@ -643,6 +658,8 @@ full_traits %>%
 
 ```
 
+\newpage
+
 ## Supplementary Table: Full Observational and PRS results
 
 ```{r}
@@ -661,6 +678,30 @@ kable_styling(latex_options = c("hold_position", "scale_down", "repeat_header"),
 row_spec(0, bold = TRUE, font_size = 3)  
 ```
 
+\newpage
+
+## Supplementary Table: IVW and OLS beta correlations results in MiBioGen
+
+```{r}
+lm_out_mbg %>%
+  #Make 95%CI
+  mutate(ols_ci95 = paste0(round(mbg_estimate - 1.96 * mbg_std.error, 3), ", ", round(mbg_estimate + 1.96 * mbg_std.error, 3)),
+         ivw_ci95 = paste0(round(mbg_ivw_estimate - 1.96 * mbg_ivw_std.error, 3), ", ", round(mbg_ivw_estimate + 1.96 * mbg_ivw_std.error, 3)),
+         across(c(mbg_estimate, mbg_p.value, mbg_ivw_estimate, mbg_ivw_p.value), ~ round(., 3))) %>%
+  select(covar_name, fgfpbugs, mbgbugs, mbg_estimate, ols_ci95, mbg_p.value, mbg_ivw_estimate, ivw_ci95, mbg_ivw_p.value) %>%
+  rename(`OLS Beta Correlation` = mbg_estimate,
+         `OLS 95% CI` = ols_ci95,
+         `OLS p-value` = mbg_p.value,
+         `IVW Beta Correlation` = mbg_ivw_estimate,
+         `IVW 95% CI` = ivw_ci95,
+         `IVW p-value` = mbg_ivw_p.value) %>%
+  arrange(covar_name) %>% 
+  kbl(caption = "OLS and IVW beta correlation results for our microbiome traits of interest in MiBioGen") %>% 
+  kable_styling(latex_options = c("hold_position", "scale_down"), font_size = 20) %>%
+  row_spec(0, bold = TRUE, font_size = 15)
+```
+
+\newpage
 
 ## Supplementary Figure: Heritability estimates for our microbiome traits of interest, before and after adjustment of the PRS
 
