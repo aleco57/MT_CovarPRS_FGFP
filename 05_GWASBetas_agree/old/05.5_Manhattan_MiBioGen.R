@@ -213,92 +213,66 @@ for(trait in unique(mbgtofollow_df$bac)){
   
   
   
-  manplot[[trait]] <- ggplot(gwas_data, aes(
-    x = bp_cum, 
-    y = -log10(P)
-  )) +
-    geom_hline(
-      yintercept = -log10(5e-8), 
-      color = "red", 
-      linetype = "dashed"
-    ) +
-    geom_hline(
-      yintercept = -log10(1e-5), 
-      color = "red", 
-      linetype = "dashed"
-    ) +
-    # Add shaded area from 0 to -log10(1e-4) across the x-axis
-    geom_rect(
-      xmin = min(gwas_data$bp_cum), xmax = max(gwas_data$bp_cum), 
-      ymin = 0, ymax = -log10(1e-4), 
-      fill = "gray", alpha = 0.3
-    ) +
-    # Set points to a consistent grey color
-    geom_point(color = "#276FBF", alpha = 0.75, size = 1.5) +
+  manplot[[trait]] <- ggplot(gwas_data, aes(x = bp_cum, y = -log10(P))) +
+    # Genome-wide significance lines
+    geom_hline(yintercept = -log10(5e-8), color = "red", linetype = "dashed", linewidth = 0.8) +
+    geom_hline(yintercept = -log10(1e-5), color = "orange", linetype = "dashed", linewidth = 0.8) +
+    
+    # Manhattan dots
+    geom_point(color = "#276FBF", alpha = 0.8, size = 1.2) +
     
     # Highlight specific SNPs with unified color mapping
-    geom_point(data = highlight_df, aes(
-      x = bp_cum, 
-      y = -log10(P.weightedSumZ), 
-      color = covar_clean,
-    ), size = 5, shape = 17) + # Triangles
+    geom_point(data = highlight_df, aes(x = bp_cum, y = -log10(P.weightedSumZ), color = covar_clean), 
+               size = 7, shape = 17) +  # Triangle shape
     
-    # # Add annotations with unified color mapping
-    # geom_text(
-    #   data = annot_r2,
-    #   aes(
-    #     x = bp_cum, 
-    #     y = y_offset, 
-    #     label = paste0("R2 = ", max_value),
-    #     color = trait  
-    #   ),
-    #   vjust = -0.5,     
-    #   hjust = 0.5,      
-    #   size = 3,
-    #   angle = 45,
-    #   show.legend = F
-    # ) +
+    # Optional annotations (uncomment if you want text labels)
+    # geom_text(data = annot_r2, aes(x = bp_cum, y = y_offset, label = paste0("R² = ", max_value), color = trait),
+    #           size = 3, angle = 45, vjust = -0.5, hjust = 0.5, show.legend = FALSE) +
     
-    # Define a single color scale for both triangles and annotations
+    # Custom color mapping
     scale_color_manual(values = custom_colours) +
     
-    # Add annotation for p < 5e-8 line
+    # Axis labels and limits
+    scale_x_continuous(label = axis_set$chr, breaks = axis_set$center) +
+    scale_y_continuous(limits = c(-log10(1e-4), ylim), expand = c(0, 0)) +
+    
+    # Axis titles and plot title
+    labs(
+      x = "Chromosome",
+      y = expression(-log[10](italic(p))),
+      colour = "Covariate",
+      title = paste0("Manhattan Plot of MiBioGen Trait: ", trait),
+      subtitle = paste0("Full Taxa Name: ", mt_fullname)
+    ) +
+    
+    # Annotate significance thresholds
     annotate("text", 
              x = global_data_cum[[21,2]], 
              y = -log10(5e-8), 
              label = "p < 5e-8", 
              color = "red", 
              hjust = -0.1, 
-             vjust = 0) +
-    # Add annotation for p < 1e-5 line
+             vjust = 0, 
+             size = 3) +
     annotate("text", 
              x = global_data_cum[[21,2]], 
              y = -log10(1e-5), 
              label = "p < 1e-5", 
-             color = "red", 
+             color = "orange", 
              hjust = -0.1, 
-             vjust = 0) +
+             vjust = 0, 
+             size = 3) +
     
-    # Formatting for the axes and theme
-    scale_x_continuous(
-      label = axis_set$chr, 
-      breaks = axis_set$center
-    ) +
-    scale_y_continuous(expand = c(0, 0), limits = c(0, ylim)) +
-    labs(
-      x = "CHR", 
-      y = "-log10(p)",
-      colour = "Covariate",
-      title = paste0("Manhattan Plot of MiBioGen Bug: ", trait),
-      subtitle = paste0("Full Taxa Name: ", mt_fullname)
-    ) +
-    theme_minimal() +
+    # Publication-style theme
+    theme_minimal(base_size = 12) +
     theme(
       legend.position = "right",
       panel.grid.major.x = element_blank(),
       panel.grid.minor.x = element_blank(),
-      axis.text.x = element_text(angle = 60, size = 8, vjust = 2), 
-      plot.title = element_text(size = 20, face = "bold")
+      axis.text.x = element_text(angle = 60, size = 9, vjust = 1),
+      axis.title = element_text(face = "bold", size = 13),
+      plot.title = element_text(size = 16, face = "bold"),
+      plot.subtitle = element_text(size = 12)
     )
   
 }
